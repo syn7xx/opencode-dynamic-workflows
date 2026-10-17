@@ -1,5 +1,5 @@
 ---
-name: workflows
+name: dynamic-workflows
 description: How to write a Workflow for the `workflow` / `workflow_inline` tools — the defineWorkflow API, typed Units, pipeline vs parallel, questions, resume, quality patterns and worked examples. Load before writing a Workflow script.
 ---
 
@@ -26,7 +26,7 @@ Common single-phase shapes, which you can chain across turns (read each result b
 ## The module
 
 ```ts
-import { defineWorkflow, z } from "@syn7xx/opencode-workflows-plugin/workflow"
+import { defineWorkflow, z } from "@syn7xx/opencode-dynamic-workflows/workflow"
 
 export default defineWorkflow({
   meta: {
@@ -296,7 +296,7 @@ value in a prompt makes resume re-run it. Units that failed are re-run.
 ## Worked example — every Unit typed, two models, verify before reporting
 
 ```ts
-import { defineWorkflow, z } from "@syn7xx/opencode-workflows-plugin/workflow"
+import { defineWorkflow, z } from "@syn7xx/opencode-dynamic-workflows/workflow"
 
 const Plan = z.object({
   areas: z.array(z.object({ name: z.string(), files: z.array(z.string()).min(1), question: z.string() })).max(4),

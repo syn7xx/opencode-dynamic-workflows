@@ -14,7 +14,7 @@ import {
 
 /** A minimal real durable Workflow module (imports defineWorkflow from our workspace). */
 const wf = (name: string, ret = "x") =>
-  `import { defineWorkflow } from "@syn7xx/opencode-workflows-plugin/workflow"\n` +
+  `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"\n` +
   `export default defineWorkflow({ meta: { name: ${JSON.stringify(name)}, description: "d" }, async run() { return ${JSON.stringify(ret)} } })\n`
 
 async function tmp(prefix: string): Promise<string> {

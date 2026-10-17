@@ -3,7 +3,7 @@ import type {
   PendingInteraction,
   ResolvedInteraction,
   Run,
-} from "@syn7xx/opencode-workflows-plugin/protocol"
+} from "@syn7xx/opencode-dynamic-workflows/protocol"
 import { createMemo, createSignal, For, Index, Show } from "solid-js"
 
 import { ActionButton, CodeBlock, Link, Tag } from "./components"

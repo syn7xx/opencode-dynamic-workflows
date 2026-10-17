@@ -1,5 +1,5 @@
 /** Solid binding of the pure Run reducer: snapshot → subscribe → apply → resync. */
-import type { Unit } from "@syn7xx/opencode-workflows-plugin/protocol"
+import type { Unit } from "@syn7xx/opencode-dynamic-workflows/protocol"
 import { createEffect, createSignal, on, onCleanup, type Accessor } from "solid-js"
 
 import type { AppContext } from "./context"

@@ -1,5 +1,5 @@
 {
-  "name": "opencode-workflows-plugin-monorepo",
+  "name": "opencode-dynamic-workflows-monorepo",
   "version": "0.0.0",
   "private": true,
   "description": "Deterministic multi-subagent Workflow orchestration for OpenCode V2, as a plugin (no core changes).",

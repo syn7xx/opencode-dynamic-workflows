@@ -10,7 +10,7 @@ import path from "node:path"
 
 import { drive, startLive, toolOutput, until, type LiveServer } from "./harness"
 
-const ASK = `import { defineWorkflow } from "@syn7xx/opencode-workflows-plugin/workflow"
+const ASK = `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"
 export default defineWorkflow({
   meta: { name: "ask", description: "asks the person one question" },
   async run({ ask }) {
@@ -23,7 +23,7 @@ export default defineWorkflow({
 })
 `
 
-const UNIT_QUESTION = `import { defineWorkflow } from "@syn7xx/opencode-workflows-plugin/workflow"
+const UNIT_QUESTION = `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"
 export default defineWorkflow({
   meta: { name: "unit-question", description: "a Unit asks the person through the workflow_question tool" },
   async run({ agent }) {
@@ -32,7 +32,7 @@ export default defineWorkflow({
 })
 `
 
-const PERMISSION = `import { defineWorkflow } from "@syn7xx/opencode-workflows-plugin/workflow"
+const PERMISSION = `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"
 export default defineWorkflow({
   meta: { name: "permission", description: "a Unit needs a permission decision" },
   async run({ agent }) {
@@ -43,7 +43,7 @@ export default defineWorkflow({
 })
 `
 
-const SLOW = `import { defineWorkflow } from "@syn7xx/opencode-workflows-plugin/workflow"
+const SLOW = `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"
 export default defineWorkflow({
   meta: { name: "slow", description: "two Units, the second waits on a question" },
   async run({ agent, ask }) {
@@ -55,7 +55,7 @@ export default defineWorkflow({
 })
 `
 
-const NOASK = `import { defineWorkflow } from "@syn7xx/opencode-workflows-plugin/workflow"
+const NOASK = `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"
 export default defineWorkflow({ meta: { name: "noask", description: "returns at once" }, async run() { return "done" } })
 `
 
@@ -127,7 +127,7 @@ describe("live: headless (no surface attached)", () => {
   }, 240_000)
 
   test("an inline Workflow is refused when nobody can approve it", async () => {
-    const source = `import { defineWorkflow } from "@syn7xx/opencode-workflows-plugin/workflow"\nexport default defineWorkflow({ meta: { name: "inline-x", description: "d" }, async run() { return "ran" } })`
+    const source = `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"\nexport default defineWorkflow({ meta: { name: "inline-x", description: "d" }, async run() { return "ran" } })`
     const { runId } = await w().startRun({ source })
     const run = await settled(runId, 30_000)
     expect(run.status).toBe("failed")
@@ -190,7 +190,7 @@ describe("live: attached surface", () => {
 
   test("an inline Workflow waits for approval; 'Run once' runs it", async () => {
     await attach()
-    const source = `import { defineWorkflow } from "@syn7xx/opencode-workflows-plugin/workflow"\nexport default defineWorkflow({ meta: { name: "inline-y", description: "d" }, async run() { return "approved-ran" } })`
+    const source = `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"\nexport default defineWorkflow({ meta: { name: "inline-y", description: "d" }, async run() { return "approved-ran" } })`
     const { runId } = await w().startRun({ source })
     const interaction = await pending(runId)
     expect(interaction.kind).toBe("approval")

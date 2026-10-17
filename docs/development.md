@@ -20,7 +20,7 @@ Everything you need to change the plugin, run it from a checkout and test it.
 | `packages/plugin/src/service/`      | The service boundary every surface calls, and the plugin-RPC contract.        |
 | `packages/plugin/src/gateway/`      | HTTP + SSE Gateway and token auth.                                            |
 | `packages/plugin/src/tui/`          | The TUI plugin, precompiled to `dist/tui.js`.                                 |
-| `packages/plugin/skill/`            | The `workflows` authoring skill the plugin registers.                         |
+| `packages/plugin/skill/`            | The `dynamic-workflows` authoring skill the plugin registers.                 |
 | `packages/web`                      | The web app (Solid + Vite), built into `packages/plugin/dist/web`.            |
 | `packages/plugin/test/fake-host.ts` | An in-memory OpenCode: most engine behaviour is tested against it.            |
 | `packages/plugin/test/live/`        | Live tests against a real OpenCode server.                                    |
@@ -54,7 +54,7 @@ entries by path):
 - **Worktree Units** (`isolation: "worktree"`) only work when the plugin is configured in a committed
   `opencode.json` (or globally): worktrees check out the committed tree.
 - **Do not load the checkout where the published package is installed.** A checkout (plugin id = its path) and the
-  npm package (id `@syn7xx/opencode-workflows-plugin`) are two plugins to OpenCode: both load, both register
+  npm package (id `@syn7xx/opencode-dynamic-workflows`) are two plugins to OpenCode: both load, both register
   the same tools and RPC methods, and either may answer, with its own options (a global `inline: "allow"` would
   bypass a project's approval). Test the checkout on a server with its own config directory, as the live tests do:
   `XDG_CONFIG_HOME=/tmp/wf-dev-config opencode serve …` with that directory's `opencode/opencode.json` holding your
@@ -92,6 +92,6 @@ Releases are automated with [release-please](https://github.com/googleapis/relea
 2. release-please keeps a release pull request open with the next version and the changelog
    (`packages/plugin/CHANGELOG.md`).
 3. Merging it tags the release; the Release workflow runs `bun run check` and `bun run build`, then publishes
-   `@syn7xx/opencode-workflows-plugin` to npm through trusted publishing (OIDC) with provenance.
+   `@syn7xx/opencode-dynamic-workflows` to npm through trusted publishing (OIDC) with provenance.
 
 A release that failed part-way can be finished by running the Release workflow manually with its tag.

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import type { LibraryEntry } from "@syn7xx/opencode-workflows-plugin/protocol"
+import type { LibraryEntry } from "@syn7xx/opencode-dynamic-workflows/protocol"
 
 import {
   beginResync,

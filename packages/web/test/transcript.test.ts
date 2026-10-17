@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import type { TranscriptMessage } from "@syn7xx/opencode-workflows-plugin/protocol"
+import type { TranscriptMessage } from "@syn7xx/opencode-dynamic-workflows/protocol"
 
 import { createApi } from "../src/api"
 import { messageView, partItem, reasoningSummary, summarizeTranscript, summaryLine, toolTitle } from "../src/transcript"

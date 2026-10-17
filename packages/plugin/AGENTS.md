@@ -1,4 +1,4 @@
-# opencode-workflows — plugin package (OpenCode V2)
+# opencode-dynamic-workflows — plugin package (OpenCode V2)
 
 One package: the server plugin, the TUI plugin (`dist/tui.js`, precompiled), the authoring API, the protocol,
 the RPC contract, the Gateway and the built web app (`dist/web`). Target: OpenCode **2.0.16+** only. Use V2

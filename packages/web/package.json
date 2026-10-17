@@ -1,15 +1,15 @@
 {
-  "name": "opencode-workflows-plugin-web",
+  "name": "opencode-dynamic-workflows-web",
   "version": "0.1.0",
   "private": true,
-  "description": "The browser UI for Workflow Runs, served by the opencode-workflows Gateway.",
+  "description": "The browser UI for Workflow Runs, served by the opencode-dynamic-workflows Gateway.",
   "type": "module",
   "scripts": {
     "build": "vite build",
     "dev": "vite"
   },
   "devDependencies": {
-    "@syn7xx/opencode-workflows-plugin": "workspace:*",
+    "@syn7xx/opencode-dynamic-workflows": "workspace:*",
     "solid-js": "1.9.12",
     "vite": "^8.3.1",
     "vite-plugin-solid": "^2.11.14"

@@ -26,7 +26,7 @@ import { pathToFileURL } from "node:url"
 import type { DefineWorkflowConfig } from "./workflow"
 
 /** The import specifier that means "the authoring API". */
-export const AUTHORING_SPECIFIERS = ["@syn7xx/opencode-workflows-plugin/workflow"] as const
+export const AUTHORING_SPECIFIERS = ["@syn7xx/opencode-dynamic-workflows/workflow"] as const
 
 /** This plugin's own authoring module, wherever the host installed the package. */
 export const AUTHORING_PATH = path.join(import.meta.dir, "workflow", "index.ts")
@@ -37,7 +37,7 @@ const LOADER_VERSION = "2"
 export function defaultCacheDir(): string {
   const xdg = process.env.XDG_CACHE_HOME
   const base = xdg && xdg.length > 0 ? xdg : path.join(os.homedir(), ".cache")
-  return path.join(base, "opencode-workflows", "workflows")
+  return path.join(base, "opencode-dynamic-workflows", "workflows")
 }
 
 const SPECIFIER_PATTERN = new RegExp(

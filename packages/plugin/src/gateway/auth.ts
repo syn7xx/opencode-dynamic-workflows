@@ -23,7 +23,7 @@ export interface DeviceToken {
 export function gatewayStateDir(): string {
   const xdg = process.env.XDG_STATE_HOME
   const base = xdg && xdg.length > 0 ? xdg : path.join(os.homedir(), ".local", "state")
-  return path.join(base, "opencode-workflows")
+  return path.join(base, "opencode-dynamic-workflows")
 }
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex")

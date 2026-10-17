@@ -1,7 +1,7 @@
 /**
  * Plugin options, as configured in `opencode.json(c)`:
  *
- *     { "plugins": [{ "package": "@syn7xx/opencode-workflows-plugin", "options": { … } }] }
+ *     { "plugins": [{ "package": "@syn7xx/opencode-dynamic-workflows", "options": { … } }] }
  *
  * Every field is optional; invalid values fall back to the default rather than failing plugin setup.
  */

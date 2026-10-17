@@ -1,5 +1,5 @@
 {
-  "$id": "https://opencode-workflows/protocol/v1/GetTranscriptOutput.json",
+  "$id": "https://opencode-dynamic-workflows/protocol/v1/GetTranscriptOutput.json",
   "title": "GetTranscriptOutput",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",

@@ -18,7 +18,7 @@ import type {
   RunStatus,
   StartRunInput,
   Unit,
-} from "@syn7xx/opencode-workflows-plugin/protocol"
+} from "@syn7xx/opencode-dynamic-workflows/protocol"
 
 export class ApiError extends Error {
   readonly status: number
@@ -50,7 +50,7 @@ export interface TokenStorage {
   set(token: string | null): void
 }
 
-export const TOKEN_KEY = "opencode-workflows.gateway-token"
+export const TOKEN_KEY = "opencode-dynamic-workflows.gateway-token"
 
 export function localTokenStorage(
   storage: Pick<Storage, "getItem" | "setItem" | "removeItem"> | undefined = globalThis.localStorage,

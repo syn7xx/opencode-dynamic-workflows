@@ -19,13 +19,13 @@ request that adds your app to the README. We are glad to help, and to add what t
 
 ## Two ways in
 
-|          | OpenCode plugin RPC                                                                      | The Gateway (HTTP + SSE)                                                                            |
-| -------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Address  | the OpenCode server: `POST /api/rpc/workflow/<method>`                                   | `http://127.0.0.1:4320/v1/…` (next free port if taken)                                              |
-| Auth     | whatever your app already uses for OpenCode                                              | a device token for control actions ([pairing](#tokens))                                             |
-| Events   | the OpenCode event stream, as `rpc.workflow.event`                                       | Server-Sent Events at `GET /v1/events`                                                              |
-| Contract | [`@syn7xx/opencode-workflows-plugin/rpc`](../packages/plugin/src/service/rpc.ts) (typed) | [OpenAPI 3.1](../packages/plugin/docs/protocol/openapi.json), also served at `GET /v1/openapi.json` |
-| Best for | apps that already talk to an OpenCode server                                             | scripts, other machines, apps that do not use the OpenCode client                                   |
+|          | OpenCode plugin RPC                                                                       | The Gateway (HTTP + SSE)                                                                            |
+| -------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Address  | the OpenCode server: `POST /api/rpc/workflow/<method>`                                    | `http://127.0.0.1:4320/v1/…` (next free port if taken)                                              |
+| Auth     | whatever your app already uses for OpenCode                                               | a device token for control actions ([pairing](#tokens))                                             |
+| Events   | the OpenCode event stream, as `rpc.workflow.event`                                        | Server-Sent Events at `GET /v1/events`                                                              |
+| Contract | [`@syn7xx/opencode-dynamic-workflows/rpc`](../packages/plugin/src/service/rpc.ts) (typed) | [OpenAPI 3.1](../packages/plugin/docs/protocol/openapi.json), also served at `GET /v1/openapi.json` |
+| Best for | apps that already talk to an OpenCode server                                              | scripts, other machines, apps that do not use the OpenCode client                                   |
 
 Both carry the same resources, commands and events ([protocol reference](../packages/plugin/docs/protocol/README.md),
 [JSON Schemas](../packages/plugin/docs/protocol/schemas)). Protocol v1 changes only by addition: new optional
@@ -57,8 +57,8 @@ between model-written code and their machine. The choices are `Run once`, `Alway
 
 ```ts
 import { OpenCode } from "@opencode/client"
-import type { PendingInteraction, ProtocolEvent } from "@syn7xx/opencode-workflows-plugin/protocol"
-import { WorkflowRpc } from "@syn7xx/opencode-workflows-plugin/rpc"
+import type { PendingInteraction, ProtocolEvent } from "@syn7xx/opencode-dynamic-workflows/protocol"
+import { WorkflowRpc } from "@syn7xx/opencode-dynamic-workflows/rpc"
 
 const directory = "/path/to/project"
 const client = OpenCode.make({ baseUrl: "http://127.0.0.1:4096", headers: { "x-opencode-directory": directory } })
@@ -190,7 +190,7 @@ default). Control actions (start, stop, resume, answer, save, cleanup) need
 - A browser page served by the Gateway itself pairs automatically (`POST /v1/pair/local`).
 - Anything else gets a one-use code from the TUI (`/workflows pair`, valid five minutes) and exchanges it at
   `POST /v1/pair` with `{ "code": "…", "name": "my-app" }`. Store the token; revoke it by deleting its entry in
-  `$XDG_STATE_HOME/opencode-workflows/gateway-tokens.json` (the running Gateway notices at once).
+  `$XDG_STATE_HOME/opencode-dynamic-workflows/gateway-tokens.json` (the running Gateway notices at once).
 - The plugin RPC route needs no Gateway token: it uses your OpenCode credentials.
 
 The [security guide](../packages/plugin/docs/security.md) covers the Gateway's host, origin and CORS rules, and

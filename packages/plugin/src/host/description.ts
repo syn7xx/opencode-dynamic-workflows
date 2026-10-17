@@ -1,13 +1,13 @@
 /**
  * What the model reads about the tools. Scope: how to write and run a Workflow. The full authoring guide is the
- * `workflows` skill (`skill/workflows/SKILL.md`); these descriptions stay short and point to it.
+ * `dynamic-workflows` skill (`skill/dynamic-workflows/SKILL.md`); these descriptions stay short and point to it.
  */
 
 const SKILL_POINTER =
-  "Before writing a Workflow, load the `workflows` skill: the full API, pipeline vs parallel, typed Units, questions, resume, quality patterns and worked examples."
+  "Before writing a Workflow, load the `dynamic-workflows` skill: the full API, pipeline vs parallel, typed Units, questions, resume, quality patterns and worked examples."
 
 const CONTEXT_REFERENCE = `A Workflow is a TypeScript module: export default defineWorkflow({ meta, run }), imported from
-"@syn7xx/opencode-workflows-plugin/workflow". meta: { name, description, whenToUse?, phases?: [{ title }], args?: zod schema,
+"@syn7xx/opencode-dynamic-workflows/workflow". meta: { name, description, whenToUse?, phases?: [{ title }], args?: zod schema,
 concurrency?, budget?, permissions?, limits? }. run(ctx) returns the result. ctx:
   - agent(prompt, opts?) → one Unit (a fresh session with NONE of your context — make the prompt self-contained).
     Resolves to its final text, or with \`schema\` (zod \`z\` or JSON Schema, object at the root) to the validated value.
@@ -23,7 +23,7 @@ concurrency?, budget?, permissions?, limits? }. run(ctx) returns the result. ctx
     files in parallel; worktrees() lists the ones kept.`
 
 const EXAMPLE = `Example — review each file, verify each finding as soon as its review is done:
-  import { defineWorkflow, z } from "@syn7xx/opencode-workflows-plugin/workflow"
+  import { defineWorkflow, z } from "@syn7xx/opencode-dynamic-workflows/workflow"
   const Findings = z.object({ findings: z.array(z.object({ line: z.number().int().nullable(), claim: z.string() })) })
   const Verdict = z.object({ holds: z.boolean(), evidence: z.string() })
   export default defineWorkflow({

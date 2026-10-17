@@ -1,4 +1,4 @@
-import type { ActivityEntry, Run } from "@syn7xx/opencode-workflows-plugin/protocol"
+import type { ActivityEntry, Run } from "@syn7xx/opencode-dynamic-workflows/protocol"
 import { createEffect, createMemo, createResource, createSignal, For, on, Show } from "solid-js"
 
 import {

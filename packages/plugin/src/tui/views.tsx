@@ -123,7 +123,7 @@ export interface Wf {
   readonly actions: Actions
 }
 
-export const PANEL = "opencode-workflows.run"
+export const PANEL = "opencode-dynamic-workflows.run"
 
 function toneColor(context: Context, tone: Tone): RGBA {
   const th = context.theme

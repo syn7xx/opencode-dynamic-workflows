@@ -9,19 +9,19 @@ import path from "node:path"
 
 import { startLive, until, type LiveServer } from "./harness"
 
-const CHILD = `import { defineWorkflow, z } from "@syn7xx/opencode-workflows-plugin/workflow"
+const CHILD = `import { defineWorkflow, z } from "@syn7xx/opencode-dynamic-workflows/workflow"
 export default defineWorkflow({
   meta: { name: "child", description: "one Unit", args: z.object({ word: z.string() }) },
   async run({ agent, args }) { return agent(\`Reply with exactly: \${args.word.toUpperCase()}\`, { label: "shout" }) },
 })
 `
-const PARENT = `import { defineWorkflow } from "@syn7xx/opencode-workflows-plugin/workflow"
+const PARENT = `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"
 export default defineWorkflow({
   meta: { name: "parent", description: "calls a saved Workflow" },
   async run({ workflow }) { return { nested: await workflow("child", { word: "nested" }) } },
 })
 `
-const EDIT = `import { defineWorkflow } from "@syn7xx/opencode-workflows-plugin/workflow"
+const EDIT = `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"
 export default defineWorkflow({
   meta: { name: "edit", description: "two Units edit files in their own worktrees" },
   async run({ agent, parallel, worktrees }) {

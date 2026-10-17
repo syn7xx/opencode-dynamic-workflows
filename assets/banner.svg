@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-labelledby="title desc">
-  <title id="title">opencode-workflows</title>
+  <title id="title">opencode-dynamic-workflows</title>
   <desc id="desc">A Workflow script fans out to five parallel Units; each turns from running to done at its own pace, and their typed results converge into one result. Next to it: workflows, deterministic multi-agent Workflows for OpenCode.</desc>
   <defs>
     <filter id="glow" x="-200%" y="-200%" width="500%" height="500%">

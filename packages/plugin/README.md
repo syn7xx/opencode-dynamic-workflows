@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@syn7xx/opencode-workflows-plugin"><img alt="npm" src="https://img.shields.io/npm/v/@syn7xx/opencode-workflows-plugin?color=fab283&label=npm"></a>
+  <a href="https://www.npmjs.com/package/@syn7xx/opencode-dynamic-workflows"><img alt="npm" src="https://img.shields.io/npm/v/@syn7xx/opencode-dynamic-workflows?color=fab283&label=npm"></a>
   <a href="https://github.com/syn7xx/opencode-dynamic-workflows/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/syn7xx/opencode-dynamic-workflows/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/syn7xx/opencode-dynamic-workflows/blob/main/LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-9d7cd8"></a>
   <img alt="OpenCode 2.0.16 or newer" src="https://img.shields.io/badge/OpenCode-%E2%89%A5%202.0.16-7fd88f">
@@ -73,7 +73,7 @@ and permission requests while it runs, and every Unit is journaled so a stopped 
 
 ```ts
 // .opencode/workflows/review-changes.ts
-import { defineWorkflow, z } from "@syn7xx/opencode-workflows-plugin/workflow"
+import { defineWorkflow, z } from "@syn7xx/opencode-dynamic-workflows/workflow"
 
 const Finding = z.object({ line: z.number().nullable(), claim: z.string() })
 const Findings = z.object({ findings: z.array(Finding) })
@@ -110,7 +110,7 @@ Each changed file gets a reviewer Unit, and each finding gets its own verifier a
 Only the findings that hold come back. Save the file, then type `/review-changes` in OpenCode, or ask the model to "run
 review-changes against main".
 
-You can also let the model write the script. The tool descriptions point it to the bundled `workflows` skill;
+You can also let the model write the script. The tool descriptions point it to the bundled `dynamic-workflows` skill;
 it writes a Workflow for the task at hand and runs it with `workflow_inline` once you approve the source.
 
 ## Requirements
@@ -125,7 +125,7 @@ it writes a Workflow for the task at hand and runs it with `workflow_inline` onc
 ## Install
 
 ```sh
-opencode plugin add @syn7xx/opencode-workflows-plugin
+opencode plugin add @syn7xx/opencode-dynamic-workflows
 opencode service restart
 ```
 
@@ -138,7 +138,7 @@ Or add it to `plugins` yourself, in a project's `opencode.json` or the global on
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugins": [{ "package": "@syn7xx/opencode-workflows-plugin", "options": { "inline": "ask" } }]
+  "plugins": [{ "package": "@syn7xx/opencode-dynamic-workflows", "options": { "inline": "ask" } }]
 }
 ```
 
@@ -155,9 +155,9 @@ installed package are two plugins to OpenCode, so do not load both in one place.
 | `workflow_inline` | Run model-written `source` (or a project file via `scriptPath`) after approval, or `save` it as a durable Workflow instead of running it. |
 | `workflow_result`, `workflow_question` | Inside Units only: the typed-result tool, and a broker-routed question tool a person answers from any surface. |
 
-The plugin also registers the **`workflows` skill**, the full authoring guide: API, pipeline vs parallel, typed
+The plugin also registers the **`dynamic-workflows` skill**, the full authoring guide: API, pipeline vs parallel, typed
 Units, questions, resume, quality patterns and worked examples. The tool descriptions tell the model to load it before
-writing a Workflow. Source: [`packages/plugin/skill/workflows/SKILL.md`](https://github.com/syn7xx/opencode-dynamic-workflows/blob/main/packages/plugin/skill/workflows/SKILL.md).
+writing a Workflow. Source: [`packages/plugin/skill/dynamic-workflows/SKILL.md`](https://github.com/syn7xx/opencode-dynamic-workflows/blob/main/packages/plugin/skill/dynamic-workflows/SKILL.md).
 
 A Run started with `background: true` returns its id at once. When it ends, a notification with a summary and a result
 preview arrives in the session that started it (plugin option `notify`).
@@ -238,7 +238,7 @@ its default.
 {
   "plugins": [
     {
-      "package": "@syn7xx/opencode-workflows-plugin",
+      "package": "@syn7xx/opencode-dynamic-workflows",
       "options": {
         "inline": "ask",
         "maxConcurrentUnits": 5,
@@ -273,12 +273,12 @@ its default.
 
 ## Writing Workflows
 
-The [`workflows` skill](https://github.com/syn7xx/opencode-dynamic-workflows/blob/main/packages/plugin/skill/workflows/SKILL.md) is the complete guide, and
+The [`dynamic-workflows` skill](https://github.com/syn7xx/opencode-dynamic-workflows/blob/main/packages/plugin/skill/dynamic-workflows/SKILL.md) is the complete guide, and
 [`packages/plugin/docs/examples/`](https://github.com/syn7xx/opencode-dynamic-workflows/tree/main/packages/plugin/docs/examples) has runnable Workflows:
 [`review-files.ts`](https://github.com/syn7xx/opencode-dynamic-workflows/blob/main/packages/plugin/docs/examples/review-files.ts) (typed findings per file),
 [`research.ts`](https://github.com/syn7xx/opencode-dynamic-workflows/blob/main/packages/plugin/docs/examples/research.ts) (a question to the person, a hard token budget) and
 [`repo-report.ts`](https://github.com/syn7xx/opencode-dynamic-workflows/blob/main/packages/plugin/docs/examples/repo-report.ts) (`ctx.$` and `ctx.file`). Import everything from
-`@syn7xx/opencode-workflows-plugin/workflow`.
+`@syn7xx/opencode-dynamic-workflows/workflow`.
 
 `run(ctx)` receives:
 
@@ -374,7 +374,7 @@ goes through one versioned protocol (v1, which changes only by addition), with t
 
 - **OpenCode plugin RPC** on the OpenCode server (`POST /api/rpc/workflow/<method>`), for apps that already talk to
   OpenCode. It uses your existing OpenCode credentials; the TypeScript contract is
-  `@syn7xx/opencode-workflows-plugin/rpc`, the types `@syn7xx/opencode-workflows-plugin/protocol`.
+  `@syn7xx/opencode-dynamic-workflows/rpc`, the types `@syn7xx/opencode-dynamic-workflows/protocol`.
 - **The Gateway** (HTTP + Server-Sent Events), described by an [OpenAPI 3.1 document](https://github.com/syn7xx/opencode-dynamic-workflows/blob/main/packages/plugin/docs/protocol/openapi.json)
   that a running Gateway also serves at `/v1/openapi.json`.
 

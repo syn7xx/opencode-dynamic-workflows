@@ -12,8 +12,8 @@ The zod definitions in `src/protocol/index.ts` are the source of truth. The JSON
 [`schemas/`](./schemas) and the Gateway's [OpenAPI 3.1 document](./openapi.json) (also served at
 `GET /v1/openapi.json`) are generated from them (`bun run script/protocol-schemas.ts`). For a walkthrough, see the
 [integration guide](../../../../docs/integrating.md). TypeScript clients can
-import the types from `@syn7xx/opencode-workflows-plugin/protocol` and the RPC contract from
-`@syn7xx/opencode-workflows-plugin/rpc`.
+import the types from `@syn7xx/opencode-dynamic-workflows/protocol` and the RPC contract from
+`@syn7xx/opencode-dynamic-workflows/rpc`.
 
 ## Versioning
 
@@ -144,7 +144,7 @@ Over RPC it arrives as the declared `workflow` error; over the Gateway as `{ "er
 
 ```ts
 import { OpenCode } from "@opencode/client"
-import { WorkflowRpc } from "@syn7xx/opencode-workflows-plugin/rpc"
+import { WorkflowRpc } from "@syn7xx/opencode-dynamic-workflows/rpc"
 
 const client = OpenCode.make({ baseUrl: "http://127.0.0.1:4096", headers: { "x-opencode-directory": "/my/project" } })
 const workflow = client.rpc(WorkflowRpc)

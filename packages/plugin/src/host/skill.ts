@@ -1,11 +1,11 @@
 /**
- * The authoring skill shipped with the plugin (`skill/workflows/SKILL.md`), registered through
+ * The authoring skill shipped with the plugin (`skill/dynamic-workflows/SKILL.md`), registered through
  * `ctx.skill.transform` so it always matches the installed engine.
  */
 import { readFileSync } from "node:fs"
 import path from "node:path"
 
-export const SKILL_PATH = path.join(import.meta.dir, "..", "..", "skill", "workflows", "SKILL.md")
+export const SKILL_PATH = path.join(import.meta.dir, "..", "..", "skill", "dynamic-workflows", "SKILL.md")
 
 export interface AuthoringSkill {
   id: string

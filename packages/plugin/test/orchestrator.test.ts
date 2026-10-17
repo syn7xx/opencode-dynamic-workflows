@@ -62,7 +62,7 @@ async function start(
 }
 
 const wf = (body: string, meta = "") =>
-  `import { defineWorkflow, z } from "@syn7xx/opencode-workflows-plugin/workflow"\nexport default defineWorkflow({ meta: { name: "t", description: "d"${meta} }, async run(ctx) { ${body} } })\n`
+  `import { defineWorkflow, z } from "@syn7xx/opencode-dynamic-workflows/workflow"\nexport default defineWorkflow({ meta: { name: "t", description: "d"${meta} }, async run(ctx) { ${body} } })\n`
 
 describe("runWorkflow", () => {
   it("runs, records Units, ends succeeded with a result preview", async () => {
@@ -232,7 +232,7 @@ describe("nested Workflows — ctx.workflow", () => {
     return { promise, store, runId, host: fake }
   }
   const child = (body: string, meta = "") =>
-    `import { defineWorkflow, z } from "@syn7xx/opencode-workflows-plugin/workflow"\nexport default defineWorkflow({ meta: { name: "child", description: "d"${meta} }, async run(ctx) { ${body} } })\n`
+    `import { defineWorkflow, z } from "@syn7xx/opencode-dynamic-workflows/workflow"\nexport default defineWorkflow({ meta: { name: "child", description: "d"${meta} }, async run(ctx) { ${body} } })\n`
 
   it("runs a saved Workflow as a step, sharing the Run, with prefixed labels and phases", async () => {
     const { promise, store, runId } = await startWith(

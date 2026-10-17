@@ -1,4 +1,4 @@
-# opencode-workflows
+# opencode-dynamic-workflows
 
 Agent guidance for this repo. The plugin, its TUI, the authoring API and the Gateway are one package in
 `packages/plugin/` (see `packages/plugin/AGENTS.md`); `packages/web/` is the web app shipped inside it.

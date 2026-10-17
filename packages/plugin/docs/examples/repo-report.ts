@@ -3,7 +3,7 @@
  *
  *   workflow({ name: "repo-report" })
  */
-import { defineWorkflow, z } from "@syn7xx/opencode-workflows-plugin/workflow"
+import { defineWorkflow, z } from "@syn7xx/opencode-dynamic-workflows/workflow"
 
 export default defineWorkflow({
   meta: {

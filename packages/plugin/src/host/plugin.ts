@@ -46,7 +46,7 @@ import {
 import { finishedRunText, listText, notificationText, runLink, startedRunText, statusText } from "./format"
 import { loadAuthoringSkill } from "./skill"
 
-export const PLUGIN_ID = "opencode-workflows"
+export const PLUGIN_ID = "opencode-dynamic-workflows"
 
 type ToolResult = { content: string; metadata?: Record<string, unknown> }
 

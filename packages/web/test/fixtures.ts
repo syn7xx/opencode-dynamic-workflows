@@ -7,7 +7,7 @@ import type {
   RunHeader,
   Unit,
   Usage,
-} from "@syn7xx/opencode-workflows-plugin/protocol"
+} from "@syn7xx/opencode-dynamic-workflows/protocol"
 
 export const LOCATION = "/tmp/project"
 

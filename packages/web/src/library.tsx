@@ -1,4 +1,4 @@
-import type { LibraryEntry, WorkflowListing } from "@syn7xx/opencode-workflows-plugin/protocol"
+import type { LibraryEntry, WorkflowListing } from "@syn7xx/opencode-dynamic-workflows/protocol"
 import { createMemo, createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 
 import { ActionButton, Empty, ErrorNote, Link, Meter, rowKeys, StatusBadge, Tag } from "./components"

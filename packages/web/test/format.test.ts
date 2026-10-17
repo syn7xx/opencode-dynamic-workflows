@@ -99,7 +99,7 @@ describe("args schema", () => {
 describe("code tokens", () => {
   test("TypeScript tokens: lines, kinds, and the exact source back", () => {
     const source = [
-      'import { defineWorkflow, z } from "@syn7xx/opencode-workflows-plugin/workflow"',
+      'import { defineWorkflow, z } from "@syn7xx/opencode-dynamic-workflows/workflow"',
       "/** A doc",
       " * comment */",
       "const Plan = z.object({ n: z.number().min(2) }) // tail",
@@ -116,7 +116,7 @@ describe("code tokens", () => {
         .filter((t) => t.text === text)
         .map((t) => t.kind)
     expect(kinds("import")).toEqual(["keyword"])
-    expect(kinds('"@syn7xx/opencode-workflows-plugin/workflow"')).toEqual(["string"])
+    expect(kinds('"@syn7xx/opencode-dynamic-workflows/workflow"')).toEqual(["string"])
     expect(lines[1]!.map((t) => t.kind)).toEqual(["comment"])
     expect(lines[2]!.map((t) => t.kind)).toEqual(["comment"])
     expect(kinds("Plan")).toEqual(["type"])

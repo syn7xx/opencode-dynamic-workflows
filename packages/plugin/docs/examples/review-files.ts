@@ -3,7 +3,7 @@
  *
  *   workflow({ name: "review-files", args: { files: ["src/a.ts", "src/b.ts"] } })
  */
-import { defineWorkflow, z } from "@syn7xx/opencode-workflows-plugin/workflow"
+import { defineWorkflow, z } from "@syn7xx/opencode-dynamic-workflows/workflow"
 
 const Finding = z.object({
   file: z.string(),

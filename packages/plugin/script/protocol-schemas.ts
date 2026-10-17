@@ -17,7 +17,7 @@ await mkdir(out, { recursive: true })
 const stale: string[] = []
 for (const [name, schema] of Object.entries(PUBLISHED_SCHEMAS)) {
   const json = {
-    $id: `https://opencode-workflows/protocol/v${PROTOCOL_VERSION}/${name}.json`,
+    $id: `https://opencode-dynamic-workflows/protocol/v${PROTOCOL_VERSION}/${name}.json`,
     title: name,
     ...z.toJSONSchema(schema, { target: "draft-2020-12", unrepresentable: "any" }),
   }

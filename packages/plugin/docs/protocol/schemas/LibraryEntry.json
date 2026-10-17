@@ -1,5 +1,5 @@
 {
-  "$id": "https://opencode-workflows/protocol/v1/LibraryEntry.json",
+  "$id": "https://opencode-dynamic-workflows/protocol/v1/LibraryEntry.json",
   "title": "LibraryEntry",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",

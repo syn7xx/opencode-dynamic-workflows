@@ -12,10 +12,10 @@ afterAll(() => rm(cacheDir, { recursive: true, force: true }))
 
 test("the authoring skill parses, and the tool descriptions point to it", async () => {
   const skill = parseSkill(await readFile(SKILL_PATH, "utf8"))
-  expect(skill.id).toBe("workflows")
+  expect(skill.id).toBe("dynamic-workflows")
   expect(skill.content.startsWith("# Writing a Workflow")).toBe(true)
-  expect(WORKFLOW_TOOL_DESCRIPTION).toContain("`workflows` skill")
-  expect(WORKFLOW_INLINE_DESCRIPTION).toContain("`workflows` skill")
+  expect(WORKFLOW_TOOL_DESCRIPTION).toContain("`dynamic-workflows` skill")
+  expect(WORKFLOW_INLINE_DESCRIPTION).toContain("`dynamic-workflows` skill")
 })
 
 test("every complete module in the skill and the tool descriptions loads", async () => {

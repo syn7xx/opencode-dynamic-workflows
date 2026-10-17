@@ -15,10 +15,10 @@ const source = (specifier: string, name = "w") =>
 describe("loader", () => {
   it("rewrites the authoring specifier (static, dynamic, side-effect, type) and leaves others alone", () => {
     const input = [
-      `import { defineWorkflow } from "@syn7xx/opencode-workflows-plugin/workflow"`,
-      `import type { AgentFn } from '@syn7xx/opencode-workflows-plugin/workflow'`,
-      `const m = await import("@syn7xx/opencode-workflows-plugin/workflow")`,
-      `import "@syn7xx/opencode-workflows-plugin/workflow"`,
+      `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"`,
+      `import type { AgentFn } from '@syn7xx/opencode-dynamic-workflows/workflow'`,
+      `const m = await import("@syn7xx/opencode-dynamic-workflows/workflow")`,
+      `import "@syn7xx/opencode-dynamic-workflows/workflow"`,
       `import fs from "node:fs"`,
     ].join("\n")
     const output = rewriteAuthoringImports(input, "/x/index.ts")
@@ -28,7 +28,7 @@ describe("loader", () => {
     // A Windows path becomes forward slashes (backslashes would be escapes inside the string literal).
     expect(
       rewriteAuthoringImports(
-        `import { z } from "@syn7xx/opencode-workflows-plugin/workflow"`,
+        `import { z } from "@syn7xx/opencode-dynamic-workflows/workflow"`,
         "C:\\plug\\src\\workflow\\index.ts",
       ),
     ).toBe(`import { z } from "C:/plug/src/workflow/index.ts"`)
@@ -36,8 +36,8 @@ describe("loader", () => {
 
   it("loads inline source that imports either authoring name, sharing the engine's module", async () => {
     for (const specifier of [
-      "@syn7xx/opencode-workflows-plugin/workflow",
-      "@syn7xx/opencode-workflows-plugin/workflow",
+      "@syn7xx/opencode-dynamic-workflows/workflow",
+      "@syn7xx/opencode-dynamic-workflows/workflow",
     ]) {
       const loaded = await loadWorkflow(source(specifier, specifier.replace(/\W/g, "")), { cacheDir })
       expect(await loaded.config.run({ args: { n: 21 } } as never)).toBe(42)
@@ -46,9 +46,9 @@ describe("loader", () => {
   })
 
   it("writes each distinct source to its own directory and reuses it for identical bytes", async () => {
-    const a = await loadWorkflow(source("@syn7xx/opencode-workflows-plugin/workflow", "a1"), { cacheDir })
-    const b = await loadWorkflow(source("@syn7xx/opencode-workflows-plugin/workflow", "b1"), { cacheDir })
-    const again = await loadWorkflow(source("@syn7xx/opencode-workflows-plugin/workflow", "a1"), { cacheDir })
+    const a = await loadWorkflow(source("@syn7xx/opencode-dynamic-workflows/workflow", "a1"), { cacheDir })
+    const b = await loadWorkflow(source("@syn7xx/opencode-dynamic-workflows/workflow", "b1"), { cacheDir })
+    const again = await loadWorkflow(source("@syn7xx/opencode-dynamic-workflows/workflow", "a1"), { cacheDir })
     expect(path.dirname(a.file)).not.toBe(path.dirname(b.file))
     expect(again.file).toBe(a.file)
   })
@@ -60,7 +60,7 @@ describe("loader", () => {
       await writeFile(path.join(project, "lib", "helper.ts"), `export const triple = (n: number) => n * 3\n`)
       const file = path.join(project, "flow.ts")
       const text =
-        `import { defineWorkflow } from "@syn7xx/opencode-workflows-plugin/workflow"\nimport { triple } from "./lib/helper"\n` +
+        `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"\nimport { triple } from "./lib/helper"\n` +
         `export default defineWorkflow({ meta: { name: "rel", description: "d" }, async run() { return triple(5) } })\n`
       await writeFile(file, text)
       expect(hasRelativeImports(text)).toBe(true)

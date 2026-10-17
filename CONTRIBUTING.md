@@ -71,7 +71,7 @@ Add `!` after the type (`feat!:`) for a breaking change, and describe the migrat
 
 ### Improving the authoring skill
 
-[`packages/plugin/skill/workflows/SKILL.md`](packages/plugin/skill/workflows/SKILL.md) teaches models to
+[`packages/plugin/skill/dynamic-workflows/SKILL.md`](packages/plugin/skill/dynamic-workflows/SKILL.md) teaches models to
 write Workflows, and it ships with the plugin. It is reviewed like code: describe what a model got wrong, the change,
 and how a model did afterwards. Every complete Workflow in it must load (a test checks it).
 

@@ -18,7 +18,7 @@ describe("SseParser", () => {
   test("ignores comments and unknown fields; an event without data is not dispatched", () => {
     const parser = new SseParser()
     const out = parser.feed(
-      ": keep-alive 123\n\nretry: 2000\n: opencode-workflows protocol 1\n\nfoo: bar\nevent: x\n\n",
+      ": keep-alive 123\n\nretry: 2000\n: opencode-dynamic-workflows protocol 1\n\nfoo: bar\nevent: x\n\n",
     )
     expect(out).toEqual([])
     expect(parser.retry).toBe(2000)

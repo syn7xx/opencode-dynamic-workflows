@@ -12,7 +12,7 @@
 import { Semaphore } from "./scheduler"
 import { createUnitIndex, type UnitIndex } from "./units"
 
-const KEY = Symbol.for("opencode-workflows.engine.v1")
+const KEY = Symbol.for("opencode-dynamic-workflows.engine.v1")
 
 /** Per-location state that must outlive a plugin instance. Filled by the service layer. */
 export interface LocationSlot {

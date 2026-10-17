@@ -88,7 +88,7 @@ Rules the Gateway enforces:
 - **Pairing.** A browser on the same machine, on the Gateway's own origin, pairs itself
   (`POST /v1/pair/local`). A remote browser needs a one-use code from the TUI (`/workflows pair`), valid for
   five minutes, exchanged at `POST /v1/pair`.
-- Tokens are stored as SHA-256 hashes in `$XDG_STATE_HOME/opencode-workflows/gateway-tokens.json`
+- Tokens are stored as SHA-256 hashes in `$XDG_STATE_HOME/opencode-dynamic-workflows/gateway-tokens.json`
   (mode 0600). Delete an entry to revoke it: the running Gateway re-reads the file when it changes. A missing or
   unreadable file grants nothing.
 - Writes are rate-limited per client. Control actions are recorded in the Run's activity with the device name.
@@ -99,11 +99,11 @@ still need a token, but prefer `tailscale` or an SSH tunnel.
 
 ## Data on disk
 
-| Path                                            | Content                                                                                                                                                       |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `<project>/.opencode/workflows/runs/<runId>/`   | the Run journal: `run.json`, `units.jsonl`, `script.ts` (the source, inline included), `result.json`. Add it to `.gitignore` if you do not want it committed. |
-| `$XDG_CACHE_HOME/opencode-workflows/workflows/` | loaded Workflow modules, one directory per content hash. Safe to delete.                                                                                      |
-| `$XDG_STATE_HOME/opencode-workflows/`           | Gateway device tokens.                                                                                                                                        |
+| Path                                                    | Content                                                                                                                                                       |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<project>/.opencode/workflows/runs/<runId>/`           | the Run journal: `run.json`, `units.jsonl`, `script.ts` (the source, inline included), `result.json`. Add it to `.gitignore` if you do not want it committed. |
+| `$XDG_CACHE_HOME/opencode-dynamic-workflows/workflows/` | loaded Workflow modules, one directory per content hash. Safe to delete.                                                                                      |
+| `$XDG_STATE_HOME/opencode-dynamic-workflows/`           | Gateway device tokens.                                                                                                                                        |
 
 Unit sessions stay in OpenCode's database like any session. The server plugin cannot delete sessions,
 so deletion happens in the TUI and only on your action: `d` on a finished Run, or `/workflows cleanup` for the

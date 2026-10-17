@@ -1,4 +1,4 @@
-import type { GetTranscriptOutput, Run, Unit } from "@syn7xx/opencode-workflows-plugin/protocol"
+import type { GetTranscriptOutput, Run, Unit } from "@syn7xx/opencode-dynamic-workflows/protocol"
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js"
 
 import {

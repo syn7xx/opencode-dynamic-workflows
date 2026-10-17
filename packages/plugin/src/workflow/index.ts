@@ -1,5 +1,5 @@
 /**
- * `@syn7xx/opencode-workflows-plugin/workflow` — the author-facing surface.
+ * `@syn7xx/opencode-dynamic-workflows/workflow` — the author-facing surface.
  *
  * A Workflow is a TypeScript module that exports `defineWorkflow({ meta, run })`. Authors import
  * `defineWorkflow` and `z` from here; the plugin engine injects a live {@link WorkflowContext} at run time.

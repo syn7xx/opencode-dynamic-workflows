@@ -4,7 +4,7 @@
   "packages": {
     "packages/plugin": {
       "release-type": "node",
-      "package-name": "@syn7xx/opencode-workflows-plugin",
+      "package-name": "@syn7xx/opencode-dynamic-workflows",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "changelog-sections": [

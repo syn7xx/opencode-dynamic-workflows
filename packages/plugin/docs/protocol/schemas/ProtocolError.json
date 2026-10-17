@@ -1,5 +1,5 @@
 {
-  "$id": "https://opencode-workflows/protocol/v1/ProtocolError.json",
+  "$id": "https://opencode-dynamic-workflows/protocol/v1/ProtocolError.json",
   "title": "ProtocolError",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",

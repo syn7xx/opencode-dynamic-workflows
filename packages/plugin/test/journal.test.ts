@@ -14,7 +14,7 @@ import {
 import { emptyUsage, type Unit } from "../src/protocol"
 import { createRunStore, newRun } from "../src/runs"
 
-const SOURCE = `import { defineWorkflow } from "@syn7xx/opencode-workflows-plugin/workflow"\nexport default defineWorkflow({ meta: { name: "wf", description: "d" }, async run() { return 1 } })\n`
+const SOURCE = `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"\nexport default defineWorkflow({ meta: { name: "wf", description: "d" }, async run() { return 1 } })\n`
 
 let dir: string
 let journal: Journal

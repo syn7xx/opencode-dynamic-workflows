@@ -40,7 +40,7 @@ function service(options: { approved?: boolean; attached?: boolean; location?: s
 }
 
 // Top-level code that marks the process when the module is loaded, i.e. when its code runs.
-const sideEffect = (flag: string) => `import { defineWorkflow } from "@syn7xx/opencode-workflows-plugin/workflow"
+const sideEffect = (flag: string) => `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"
 ;(globalThis as Record<string, unknown>)[${JSON.stringify(flag)}] = true
 export default defineWorkflow({
   meta: { name: "marker", description: "marks the process", phases: [{ title: "only" }] },
