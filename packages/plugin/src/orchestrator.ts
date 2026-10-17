@@ -1,0 +1,391 @@
+/**
+ * The orchestrator — turns a loaded Workflow into a Run.
+ *
+ * It validates `args` against `meta.args` before anything launches, creates the Run in the store, opens its
+ * journal record, wires the Run's interactions to the broker, builds the context, calls `run`, and settles the
+ * Run with a terminal status and result. Host-independent: everything OpenCode-specific arrives as an
+ * {@link EngineHost} and an {@link UnitIndex}.
+ */
+import type { Broker } from "./broker"
+import { createCapabilities } from "./capabilities"
+import { createEngineState, createWorkflowContext, type ReplayPlan, type RunLimits } from "./context"
+import type { EngineHost, HostPermissionRule } from "./host"
+import type { Journal } from "./journal"
+import type { Run, WorkflowIdentity } from "./protocol"
+import { isTerminal, newRun, type RunStore } from "./runs"
+import { Semaphore } from "./scheduler"
+import type { UnitIndex } from "./units"
+import type { DefineWorkflowConfig, WorkflowMeta } from "./workflow"
+
+/** Units in flight for one Run: the author's `meta.concurrency`, never above the configured cap. */
+export function resolveConcurrency(fromMeta: number | undefined, cap = DEFAULT_UNITS_PER_RUN): number {
+  const limit = Number.isFinite(cap) && cap > 0 ? Math.floor(cap) : DEFAULT_UNITS_PER_RUN
+  return fromMeta !== undefined && Number.isFinite(fromMeta) && fromMeta >= 1
+    ? Math.min(Math.floor(fromMeta), limit)
+    : limit
+}
+
+export const DEFAULT_UNITS_PER_RUN = 5
+
+/** How long a Run waits for Units it did not await to stop, after `run` returned. */
+const STRAY_DRAIN_MS = 10_000
+
+/** No default per-Unit timeout: a deadline is opt-in (meta.unitTimeout, the Run, or agent({ timeoutMs })). */
+export function resolveUnitTimeout(fromRun: number | undefined, fromMeta: number | undefined): number | undefined {
+  return fromRun ?? fromMeta
+}
+
+/** No default grace on a question: absent both a per-Workflow and a per-ask grace, a question waits. */
+export function resolveAskGrace(fromMeta: number | undefined): number | null {
+  if (fromMeta === undefined || !Number.isFinite(fromMeta)) return null
+  return Math.max(0, fromMeta)
+}
+
+export type PermissionPolicy = "ask" | "auto" | "deny"
+
+export function resolvePermissionPolicy(meta: Pick<WorkflowMeta, "interaction">): PermissionPolicy {
+  const value = meta.interaction?.permissions
+  if (value === "auto" || value === "deny") return value
+  return "ask"
+}
+
+export function resolveBudget(
+  meta: Pick<WorkflowMeta, "budget">,
+  override?: number,
+): { total: number | null; hard: boolean } {
+  if (override !== undefined) return { total: override, hard: false }
+  const budget = meta.budget
+  if (budget === undefined) return { total: null, hard: false }
+  if (typeof budget === "number") return { total: budget, hard: false }
+  return { total: budget.tokens, hard: budget.hard === true }
+}
+
+export function formatArgsIssues(error: { issues: Array<{ path: PropertyKey[]; message: string }> }): string {
+  return error.issues.map((issue) => `${issue.path.map(String).join(".") || "(root)"}: ${issue.message}`).join("; ")
+}
+
+export class InvalidArgsError extends Error {
+  constructor(detail: string) {
+    super(`invalid args: ${detail}`)
+    this.name = "InvalidArgsError"
+  }
+}
+
+export function previewResult(result: unknown, max = 400): string | null {
+  if (result === undefined || result === null) return null
+  const text = typeof result === "string" ? result : JSON.stringify(result)
+  if (text === undefined) return null
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text
+}
+
+export interface RunWorkflowInput {
+  config: DefineWorkflowConfig
+  source: string
+  identity: WorkflowIdentity
+  args?: unknown
+  host: EngineHost
+  index: UnitIndex
+  broker: Broker
+  store: RunStore
+  journal?: Journal | null
+  runId: string
+  parentSessionID: string
+  location: string
+  /** Plugin instance id, recorded as the Run's owner in the journal. */
+  instance?: string
+  signal?: AbortSignal
+  unitTimeout?: number
+  budget?: number
+  background?: boolean
+  limits?: Partial<RunLimits>
+  replay?: ReplayPlan
+  resumeOf?: string | null
+  /** Rules applied to every Unit session in addition to `meta.permissions`. */
+  permissions?: HostPermissionRule[]
+  /** Extra context members. */
+  extend?: Record<string, unknown>
+  /** `ctx.$` / `ctx.file` / `ctx.fetch`: off (with the reason) or on. */
+  capabilities?: { disabled?: string; shellTimeoutMs?: number }
+  /** The Run exists; `stop` ends it. */
+  onRegister?: (runId: string, stop: (reason?: string) => void) => void
+  onUnitSession?: (runId: string, unitId: string, sessionID: string, stop: () => void) => void
+  /** The per-Run Unit cap (plugin option maxConcurrentUnits); `meta.concurrency` can only lower it. */
+  maxConcurrency?: number
+  /** Resolve a saved Workflow by key, for `ctx.workflow(name)`. */
+  resolveWorkflow?: (name: string) => Promise<DefineWorkflowConfig>
+  /** Cross-Run Unit slots (the process-wide limiter). */
+  slot?: (providerID: string | undefined, signal: AbortSignal) => Promise<() => void>
+  /** The Run's result, handed over before `run.ended` is published. */
+  onResult?: (runId: string, result: unknown) => void
+  /** Called when the Run is terminal (after the store and journal have it). */
+  onSettled?: (run: Run, result: unknown) => void
+  /** An existing store Run to continue (status `queued`, e.g. after an approval), instead of creating one. */
+  existingRun?: boolean
+}
+
+export interface RunWorkflowOutput {
+  result: unknown
+  run: Run
+  meta: DefineWorkflowConfig["meta"]
+}
+
+function journalWrite(write: (() => Promise<void>) | undefined): Promise<void> {
+  if (!write) return Promise.resolve()
+  try {
+    return write().catch(() => {})
+  } catch {
+    return Promise.resolve()
+  }
+}
+
+/** Validate `args` against `meta.args`; returns the parsed value. Throws {@link InvalidArgsError}. */
+export function validateArgs(meta: WorkflowMeta, args: unknown): unknown {
+  const schema = meta.args
+  if (!schema) return args
+  const parsed = schema.safeParse(args)
+  if (parsed.success) return parsed.data
+  // No args at all (a bare `/name` command): an object whose fields all have defaults should still run.
+  if (args === undefined || args === null) {
+    const empty = schema.safeParse({})
+    if (empty.success) return empty.data
+  }
+  throw new InvalidArgsError(formatArgsIssues(parsed.error))
+}
+
+/**
+ * Run a loaded Workflow. Resolves with the result once the Run is terminal; rejects only when the Run could not
+ * start (invalid args) or when the author's `run` threw — in both cases the Run is recorded as failed first.
+ */
+export async function runWorkflow(input: RunWorkflowInput): Promise<RunWorkflowOutput> {
+  const { config, store } = input
+  const meta = config.meta
+  const stopController = new AbortController()
+  const signal = input.signal ? AbortSignal.any([input.signal, stopController.signal]) : stopController.signal
+  const budget = resolveBudget(meta, input.budget)
+  let stopReason: string | undefined
+
+  let args: unknown
+  const phases = (meta.phases ?? []).map((phase) => phase.title)
+  if (!input.existingRun) {
+    store.create(
+      newRun({
+        runId: input.runId,
+        workflow: input.identity,
+        location: input.location,
+        parentSessionID: input.parentSessionID,
+        phases,
+        budget: budget.total,
+        hardBudget: budget.hard,
+        background: input.background ?? false,
+        resumeOf: input.resumeOf ?? null,
+      }),
+    )
+  } else {
+    store.apply({
+      type: "run.patch",
+      runId: input.runId,
+      patch: {
+        status: "running",
+        phases,
+        phasesDeclared: phases.length > 0,
+        budget: { total: budget.total, hard: budget.hard },
+      },
+    })
+  }
+  input.onRegister?.(input.runId, (reason) => {
+    stopReason ??= reason
+    stopController.abort(new Error(reason ?? "stopped"))
+  })
+
+  const state = createEngineState()
+  let result: unknown
+  let status: Run["status"] = "failed"
+  let failure: string | undefined
+
+  try {
+    try {
+      args = validateArgs(meta, input.args)
+    } catch (error) {
+      failure = error instanceof Error ? error.message : String(error)
+      throw error
+    }
+    void journalWrite(
+      input.journal
+        ? () =>
+            input.journal!.begin(store.get(input.runId)!, {
+              source: input.source,
+              args,
+              instance: input.instance ?? "",
+            })
+        : undefined,
+    )
+
+    const capabilities = () =>
+      createCapabilities({
+        location: input.location,
+        signal,
+        audit: (message) => store.apply({ type: "run.log", runId: input.runId, value: message, kind: "capability" }),
+        ...(input.capabilities?.disabled ? { disabled: input.capabilities.disabled } : {}),
+        ...(input.capabilities?.shellTimeoutMs ? { shellTimeoutMs: input.capabilities.shellTimeoutMs } : {}),
+      })
+    const limiter = new Semaphore(resolveConcurrency(meta.concurrency, input.maxConcurrency))
+    const base = {
+      host: input.host,
+      index: input.index,
+      runId: input.runId,
+      workflow: meta.name,
+      location: input.location,
+      parentSessionID: input.parentSessionID,
+      args,
+      state,
+      concurrency: meta.concurrency,
+      budget: budget.total,
+      hardBudget: budget.hard,
+      signal,
+      unitTimeout: resolveUnitTimeout(input.unitTimeout, meta.unitTimeout),
+      limits: { ...meta.limits, ...input.limits },
+      ...(input.slot ? { slot: input.slot } : {}),
+      permissions: [...(meta.permissions ?? []), ...(input.permissions ?? [])],
+      permissionPolicy: () => resolvePermissionPolicy(meta),
+      ask: (form, options) =>
+        input.broker.ask({
+          runId: input.runId,
+          sessionID: input.parentSessionID,
+          form,
+          options,
+          defaultGraceMs: resolveAskGrace(meta.interaction?.graceMs),
+          signal,
+        }),
+      askAgent: (unitId, sessionID) => (questions, unitSignal) =>
+        input.broker.askAgent({
+          runId: input.runId,
+          unitId,
+          sessionID,
+          questions,
+          signal: AbortSignal.any([signal, unitSignal]),
+        }),
+      onLimit: (message) => {
+        stopReason ??= message
+        failure = message
+        stopController.abort(new Error(message))
+      },
+      ...(input.replay
+        ? {
+            replay: {
+              ...input.replay,
+              onDiverge: (message: string) =>
+                store.apply({ type: "run.log", runId: input.runId, value: message, kind: "engine" }),
+            },
+          }
+        : {}),
+      limiter,
+      events: {
+        onLog: (message) => store.apply({ type: "run.log", runId: input.runId, value: message }),
+        onPhase: (title) => store.apply({ type: "run.phase", runId: input.runId, value: title }),
+        onUnit: (unit) => {
+          if (isTerminal(store.get(input.runId)?.status ?? "failed")) return
+          store.apply({ type: "unit.upsert", runId: input.runId, unit })
+          if (unit.endedAt !== null) {
+            // An ended Unit (done, failed, stopped, timed out) can no longer be allowed or asked anything.
+            input.broker.releaseUnit(input.runId, unit.unitId)
+            store.apply({
+              type: "run.patch",
+              runId: input.runId,
+              patch: { tokensSpent: state.tokensSpent, errors: state.errors.map((error) => ({ ...error })) },
+            })
+          }
+        },
+        onUnitSession: (unitId, sessionID, stop) => input.onUnitSession?.(input.runId, unitId, sessionID, stop),
+      },
+    } satisfies Partial<Parameters<typeof createWorkflowContext>[0]>
+
+    /**
+     * `ctx.workflow(name, args)`: a saved Workflow as one step of this Run. It shares the Run's concurrency cap,
+     * Unit counter (so resume replays it too), budget, errors and signal; its Units and phases are prefixed
+     * `name › `. One level only.
+     */
+    const nested = async (name: string, childArgs?: unknown): Promise<unknown> => {
+      if (!input.resolveWorkflow) throw new Error("ctx.workflow is not available here")
+      const child = await input.resolveWorkflow(name)
+      const parsed = validateArgs(child.meta, childArgs)
+      store.apply({ type: "run.log", runId: input.runId, value: `▸ ${name}`, kind: "engine" })
+      const childCtx = createWorkflowContext({
+        ...base,
+        workflow: `${meta.name} › ${child.meta.name}`,
+        args: parsed,
+        permissions: [...(child.meta.permissions ?? []), ...(input.permissions ?? [])],
+        prefix: `${name} › `,
+        extend: {
+          ...capabilities(),
+          workflow: async () => {
+            throw new Error("ctx.workflow: nesting is one level only")
+          },
+        },
+      })
+      const childResult = await child.run(childCtx)
+      store.apply({ type: "run.log", runId: input.runId, value: `◂ ${name} done`, kind: "engine" })
+      return childResult
+    }
+
+    const ctx = createWorkflowContext({ ...base, extend: { ...capabilities(), workflow: nested, ...input.extend } })
+
+    result = await config.run(ctx)
+    status = signal.aborted ? (failure ? "failed" : "stopped") : "succeeded"
+    return { result, run: store.get(input.runId)!, meta }
+  } catch (error) {
+    const aborted = signal.aborted || (error instanceof Error && error.name === "AbortError")
+    status = failure ? "failed" : aborted ? "stopped" : "failed"
+    failure ??= error instanceof Error ? error.message : String(error)
+    throw error
+  } finally {
+    if (state.inflight.size > 0) {
+      // `run` returned while Units it never awaited were still going: they belong to this Run, so they stop with it
+      // and settle BEFORE it ends (nothing may change a Run after run.ended).
+      const stray = state.inflight.size
+      if (!signal.aborted) {
+        store.apply({
+          type: "run.log",
+          runId: input.runId,
+          value: `stopping ${stray} Unit(s) the script did not await`,
+          kind: "engine",
+        })
+        stopController.abort(new Error("the Run ended"))
+      }
+      await Promise.race([
+        Promise.allSettled(state.inflight),
+        new Promise((resolve) => setTimeout(resolve, STRAY_DRAIN_MS)),
+      ])
+    }
+    input.broker.releaseRun(input.runId)
+    let current = store.get(input.runId)
+    if (current && (current.status === "running" || current.status === "queued")) {
+      if (failure && status !== "succeeded")
+        store.apply({ type: "run.log", runId: input.runId, value: `run ${status}: ${failure}`, kind: "engine" })
+      if (stopReason && status === "stopped")
+        store.apply({ type: "run.log", runId: input.runId, value: `stopped: ${stopReason}`, kind: "engine" })
+      current = store.get(input.runId)!
+      const patch: Partial<Run> = {
+        status,
+        currentPhase: state.currentPhase ?? current.currentPhase,
+        errors: state.errors.map((error) => ({ ...error })),
+        tokensSpent: state.tokensSpent,
+        endedAt: Date.now(),
+        resultPreview: status === "succeeded" ? previewResult(result) : null,
+        error: status === "succeeded" ? null : (failure ?? (stopReason ? `stopped: ${stopReason}` : null)),
+      }
+      // Durable and fetchable BEFORE it is announced: a client that reacts to `run.ended` must find the result
+      // and a journal record that already says so.
+      input.onResult?.(input.runId, result)
+      await journalWrite(
+        input.journal
+          ? () => input.journal!.finish({ ...current!, ...patch, revision: current!.revision + 1 }, result)
+          : undefined,
+      )
+      store.apply({ type: "run.ended", runId: input.runId, patch })
+    }
+    // Anything the script left running (a late agent() or ask()) ends now instead of outliving the Run.
+    if (!stopController.signal.aborted) stopController.abort(new Error("the Run ended"))
+    const terminal = store.get(input.runId)
+    if (terminal) input.onSettled?.(terminal, result)
+  }
+}
