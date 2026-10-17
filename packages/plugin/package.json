@@ -46,8 +46,7 @@
     "./tui": "./dist/tui.js"
   },
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "dependencies": {
     "@opencode/plugin": "^2.0.16",
