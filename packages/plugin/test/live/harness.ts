@@ -3,7 +3,7 @@ import os from "node:os"
 import path from "node:path"
 
 /**
- * Live harness for OpenCode V2 (2.0.16+): a private `opencode serve` with its own database, a throwaway project
+ * Live harness for OpenCode V2 (2.1.0+): a private `opencode serve` with its own database, a throwaway project
  * that loads THIS plugin, and an authenticated client. No user configuration is touched.
  *
  * Environment:

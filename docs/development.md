@@ -4,11 +4,11 @@ Everything you need to change the plugin, run it from a checkout and test it.
 
 ## Prerequisites
 
-| Tool                                    | Why                                                        |
-| --------------------------------------- | ---------------------------------------------------------- |
-| [Bun](https://bun.sh) 1.3+              | Installs dependencies, runs tests, builds and scripts.     |
-| [OpenCode](https://opencode.ai) 2.0.16+ | Runs the plugin; needed only for the live tests.           |
-| A model provider signed in to OpenCode  | Live tests and real Runs. Unit tests and the UI need none. |
+| Tool                                   | Why                                                        |
+| -------------------------------------- | ---------------------------------------------------------- |
+| [Bun](https://bun.sh) 1.3+             | Installs dependencies, runs tests, builds and scripts.     |
+| [OpenCode](https://opencode.ai) 2.1.0+ | Runs the plugin; needed only for the live tests.           |
+| A model provider signed in to OpenCode | Live tests and real Runs. Unit tests and the UI need none. |
 
 ## Layout
 

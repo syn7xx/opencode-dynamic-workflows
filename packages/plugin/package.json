@@ -49,19 +49,19 @@
     "access": "public"
   },
   "dependencies": {
-    "@opencode/plugin": "^2.0.16",
+    "@opencode/plugin": "^2.1.0",
     "zod": "4.1.8"
   },
   "devDependencies": {
-    "@opencode/client": "2.0.16",
-    "@opencode/theme": "2.0.16",
-    "@opentui/core": "0.5.12",
-    "@opentui/solid": "0.5.12",
+    "@opencode/client": "2.1.0",
+    "@opencode/theme": "2.1.0",
+    "@opentui/core": "0.6.6",
+    "@opentui/solid": "0.6.6",
     "solid-js": "1.9.12"
   },
   "peerDependencies": {
-    "@opentui/core": ">=0.5.10",
-    "@opentui/solid": ">=0.5.10",
+    "@opentui/core": ">=0.6.6",
+    "@opentui/solid": ">=0.6.6",
     "solid-js": ">=1.9.0"
   }
 }

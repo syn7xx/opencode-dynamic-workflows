@@ -111,7 +111,7 @@ function git(directory: string, args: string[]): string | null {
   return out.exitCode === 0 ? out.stdout.toString().trim() : null
 }
 
-/** The shape of the built-in `question` tool's input (2.0.16). */
+/** The shape of the built-in `question` tool's input (2.1.0). */
 interface QuestionToolInput {
   questions?: Array<{
     question?: string

@@ -187,7 +187,7 @@ function interruptedBeforeSession(why: Settle): string {
   return "unit aborted before its session existed"
 }
 
-/** Rough token count for host calls that report no usage (`generate.text` on 2.0.16): ~4 characters a token. */
+/** Rough token count for host calls that report no usage (`generate.text` on 2.1.0): ~4 characters a token. */
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4)
 }

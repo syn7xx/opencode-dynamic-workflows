@@ -2,6 +2,7 @@
  * Shared building blocks for the TUI, in OpenCode's own visual language: the raised panel with a `┃` accent bar,
  * section titles, `key label` hints, rows with an accent marker, and the theme's syntax style for code.
  */
+import type { Context } from "@opencode/plugin/tui/context"
 import type { ResolvedTheme } from "@opencode/theme/tui"
 import { generateSyntax } from "@opencode/theme/tui"
 import type { RGBA, SyntaxStyle } from "@opentui/core"
@@ -41,15 +42,21 @@ export function toneColor(theme: ResolvedTheme, tone: Tone): RGBA {
   }
 }
 
-/** The theme's syntax style (OpenCode's own `generateSyntax`); each replaced style is freed with the component. */
-export function useSyntax(theme: Accessor<ResolvedTheme>): Accessor<SyntaxStyle> {
+/**
+ * The theme's syntax style (OpenCode's own `generateSyntax`); each replaced style is freed with the component.
+ *
+ * `generateSyntax` needs a native resource owner to create its `SyntaxStyle`: pass the renderer's scene, the one
+ * owner OpenCode's `SyntaxStyle` accepts inside a live TUI (`renderer.nativeScene`). OpenCode 2.1.0 made that
+ * owner mandatory (`@opentui/core` 0.6.x); the plugin requires 2.1.0+.
+ */
+export function useSyntax(context: Context, theme: Accessor<ResolvedTheme>): Accessor<SyntaxStyle> {
   const styles: SyntaxStyle[] = []
   onCleanup(() => {
     for (const style of styles.splice(0)) style.destroy()
   })
   return createMemo(() => {
     // `@opencode/theme` types a different `@opentui/core` release; at run time both are the host's one copy.
-    const style = generateSyntax(theme()) as unknown as SyntaxStyle
+    const style = generateSyntax(theme(), context.renderer.nativeScene)
     styles.push(style)
     return style
   })

@@ -1,8 +1,8 @@
 # opencode-dynamic-workflows — plugin package (OpenCode V2)
 
 One package: the server plugin, the TUI plugin (`dist/tui.js`, precompiled), the authoring API, the protocol,
-the RPC contract, the Gateway and the built web app (`dist/web`). Target: OpenCode **2.0.16+** only. Use V2
-sources only (https://opencode.ai/v2/docs/, the installed `@opencode/*` 2.0.16 types) — never V1 docs.
+the RPC contract, the Gateway and the built web app (`dist/web`). Target: OpenCode **2.1.0+** only. Use V2
+sources only (https://opencode.ai/v2/docs/, the installed `@opencode/*` 2.1.0 types) — never V1 docs.
 
 ## Layout
 
@@ -33,8 +33,8 @@ sources only (https://opencode.ai/v2/docs/, the installed `@opencode/*` 2.0.16 t
 
 - The engine never imports `@opencode/*`: only `src/host/`, `src/service/rpc.ts`, `src/gateway/` and
   `src/tui/` do. Extend `host.ts` instead of reaching past it.
-- Units are unlinked sessions; their identity is create-time `metadata.workflow` (plugin metadata updates are
-  a no-op on 2.0.16). Mutable Unit state lives in the Unit index, the store and the journal.
+- Units are unlinked sessions; their identity is create-time `metadata.workflow` (the plugin does not rely on
+  updating metadata later). Mutable Unit state lives in the Unit index, the store and the journal.
 - Tools use `options: { codemode: false }`.
 - A journal error is never a Run error; a Run's terminal state is journaled before `run.ended` is published.
 - Protocol changes within v1 are additive only.

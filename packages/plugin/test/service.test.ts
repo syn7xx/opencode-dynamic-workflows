@@ -32,7 +32,7 @@ function service(options: { approved?: boolean; attached?: boolean; location?: s
       broker: createBroker({ store, attached: () => options.attached === true }),
       config: DEFAULT_CONFIG,
       instance: "test",
-      opencodeVersion: "2.0.16",
+      opencodeVersion: "2.1.0",
       approvals: { get: async () => options.approved === true, set: async () => {} },
       gatewayUrl: () => null,
     }),

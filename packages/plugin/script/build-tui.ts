@@ -33,7 +33,7 @@ const result = await Bun.build({
       },
     },
   ],
-  // No minify: any minified output (even whitespace-only) crashes the panel with "No renderer found" on 2.0.16.
+  // No minify: a minified output has crashed the panel with "No renderer found"; keep the emitted bindings intact.
   external: [
     // A dependency of this package: resolved from its own node_modules at run time instead of bundled.
     "zod",
