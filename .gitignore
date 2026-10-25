@@ -11,6 +11,3 @@ packages/*/dist-types/
 
 # Built TUI plugin and web app (`bun run build`; shipped in the package, not committed)
 packages/plugin/dist/
-
-# Local design specs and working notes (not part of the published project)
-docs/superpowers/
