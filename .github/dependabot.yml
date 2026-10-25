@@ -11,6 +11,10 @@ updates:
       # The host provides these to the TUI bundle; keep them on the versions OpenCode ships.
       - dependency-name: "@opentui/*"
       - dependency-name: solid-js
+      # TypeScript 7 replaces the compiler (the native port) and needs its own migration;
+      # take it deliberately, not as a routine bump. Patch/minor still come through.
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
     groups:
       minor-and-patch: { update-types: [minor, patch] }
     commit-message: { prefix: "build(deps)" }
