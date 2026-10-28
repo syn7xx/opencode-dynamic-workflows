@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "bun:test"
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 
@@ -68,7 +68,103 @@ describe("loader", () => {
       expect(loaded.file.endsWith("workflow.js")).toBe(true)
       expect(await loaded.config.run({} as never)).toBe(15)
       const bundled = await Bun.file(loaded.file).text()
+      // The materialized module resolves the authoring specifier to this plugin's own module.
       expect(bundled).toContain(AUTHORING_PATH.replaceAll("\\", "/"))
+      // The returned snapshot keeps the specifier PORTABLE, so its bytes do not depend on the install path.
+      expect(loaded.executionSource).toContain("@syn7xx/opencode-dynamic-workflows/workflow")
+      expect(loaded.executionSource).not.toContain(AUTHORING_PATH.replaceAll("\\", "/"))
+    } finally {
+      await rm(project, { recursive: true, force: true })
+    }
+  })
+
+  it("keys a durable module by its whole graph: editing only a helper picks a fresh module", async () => {
+    const project = await mkdtemp(path.join(os.tmpdir(), "wf-graph-"))
+    try {
+      await mkdir(path.join(project, "lib"), { recursive: true })
+      const helper = path.join(project, "lib", "helper.ts")
+      const file = path.join(project, "flow.ts")
+      const text =
+        `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"\nimport { value } from "./lib/helper"\n` +
+        `export default defineWorkflow({ meta: { name: "graph", description: "d" }, async run() { return value() } })\n`
+      await writeFile(file, text)
+      await writeFile(helper, `export const value = () => "one"\n`)
+      const first = await loadWorkflow(text, { cacheDir, sourcePath: file })
+      expect(await first.config.run({} as never)).toBe("one")
+
+      // The entry text is byte-for-byte unchanged; only the helper changed.
+      await writeFile(helper, `export const value = () => "two"\n`)
+      const second = await loadWorkflow(text, { cacheDir, sourcePath: file })
+      expect(second.file).not.toBe(first.file)
+      expect(await second.config.run({} as never)).toBe("two")
+    } finally {
+      await rm(project, { recursive: true, force: true })
+    }
+  })
+
+  it("bundles the given source, not whatever is on disk at sourcePath (legacy resume stays faithful)", async () => {
+    const project = await mkdtemp(path.join(os.tmpdir(), "wf-legacy-"))
+    try {
+      await mkdir(path.join(project, "lib"), { recursive: true })
+      await writeFile(path.join(project, "lib", "helper.ts"), `export const v = () => "H"\n`)
+      const file = path.join(project, "flow.ts")
+      const journaled =
+        `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"\nimport { v } from "./lib/helper"\n` +
+        `export default defineWorkflow({ meta: { name: "j", description: "d" }, async run() { return "JOURNALED_" + v() } })\n`
+      const edited =
+        `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"\nimport { v } from "./lib/helper"\n` +
+        `export default defineWorkflow({ meta: { name: "j", description: "d" }, async run() { return "EDITED_" + v() } })\n`
+      // The durable file on disk has been edited since the run; the resume must bundle the journaled text.
+      await writeFile(file, edited)
+      const loaded = await loadWorkflow(journaled, { cacheDir, sourcePath: file })
+      expect(await loaded.config.run({} as never)).toBe("JOURNALED_H")
+    } finally {
+      await rm(project, { recursive: true, force: true })
+    }
+  })
+
+  it("bundles the given source even when sourcePath goes through a symlink", async () => {
+    // macOS `os.tmpdir()` is `/var/…` → `/private/var/…`, and Bun reports modules by their real path: a plain
+    // string comparison misses and silently bundles the file on disk. A symlink reproduces that everywhere.
+    const real = await mkdtemp(path.join(os.tmpdir(), "wf-real-"))
+    const linked = path.join(await mkdtemp(path.join(os.tmpdir(), "wf-link-")), "link")
+    try {
+      await symlink(real, linked)
+      await mkdir(path.join(real, "lib"), { recursive: true })
+      await writeFile(path.join(real, "lib", "helper.ts"), `export const v = () => "H"\n`)
+      const journaled =
+        `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"\nimport { v } from "./lib/helper"\n` +
+        `export default defineWorkflow({ meta: { name: "s", description: "d" }, async run() { return "JOURNALED_" + v() } })\n`
+      const viaSymlink = path.join(linked, "flow.ts")
+      await writeFile(
+        viaSymlink,
+        `export default { meta: { name: "s", description: "d" }, async run() { return "EDITED" } }\n`,
+      )
+      const loaded = await loadWorkflow(journaled, { cacheDir, sourcePath: viaSymlink })
+      expect(await loaded.config.run({} as never)).toBe("JOURNALED_H")
+    } finally {
+      await rm(real, { recursive: true, force: true })
+      await rm(path.dirname(linked), { recursive: true, force: true })
+    }
+  })
+
+  it("imports a journaled executionSource verbatim, without the original file or its lib/", async () => {
+    const project = await mkdtemp(path.join(os.tmpdir(), "wf-exec-"))
+    try {
+      await mkdir(path.join(project, "lib"), { recursive: true })
+      await writeFile(path.join(project, "lib", "helper.ts"), `export const triple = (n: number) => n * 3\n`)
+      const file = path.join(project, "flow.ts")
+      const text =
+        `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"\nimport { triple } from "./lib/helper"\n` +
+        `export default defineWorkflow({ meta: { name: "rel", description: "d" }, async run() { return triple(7) } })\n`
+      await writeFile(file, text)
+      const { executionSource } = await loadWorkflow(text, { cacheDir, sourcePath: file })
+      expect(executionSource).toBeDefined()
+
+      // The snapshot loads with no `sourcePath` at all (the durable file and its lib/ could be gone).
+      const resumed = await loadWorkflow(text, { cacheDir, executionSource })
+      expect(resumed.file.endsWith("workflow.js")).toBe(true)
+      expect(await resumed.config.run({} as never)).toBe(21)
     } finally {
       await rm(project, { recursive: true, force: true })
     }

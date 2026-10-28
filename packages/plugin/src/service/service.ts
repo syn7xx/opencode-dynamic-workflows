@@ -18,7 +18,7 @@ import type { ReplayPlan } from "../context"
 import { runSlot, runSlotsFull, unitSlot } from "../engine-global"
 import { formatModel, type EngineHost, type HostMessage } from "../host"
 import { ownerAlive, type Journal } from "../journal"
-import { loadWorkflow, loadWorkflowConfig, sha256 } from "../loader"
+import { hasRelativeImports, loadWorkflow, loadWorkflowConfig, sha256 } from "../loader"
 import { runWorkflow, type RunWorkflowOutput } from "../orchestrator"
 import {
   PROTOCOL_VERSION,
@@ -72,6 +72,12 @@ export interface StartOptions {
   replay?: ReplayPlan
   resumeOf?: string | null
   identity?: WorkflowIdentity
+  /**
+   * Resume-only: how to load the journaled script. `executionSource` is the Run's own executable snapshot;
+   * `sourcePath` anchors the relative imports of a record journaled before that snapshot existed. Resume reads
+   * both from the journal — no caller outside this service supplies them.
+   */
+  resume?: { sourcePath?: string; executionSource?: string }
 }
 
 export interface StartedRun {
@@ -404,7 +410,9 @@ export class WorkflowService {
       input.parentSessionID ?? (await this.starterSession(input.name ?? "inline", options.surface))
 
     let source: string
-    let sourcePath: string | undefined
+    let sourcePath: string | undefined = options.resume?.sourcePath
+    // Filled by `load()` for a Workflow with local imports, and journaled with the Run so resume reads none of them.
+    let executionSource: string | undefined = options.resume?.executionSource
     let identity: WorkflowIdentity
     if (input.name) {
       const registry = await buildRegistry({
@@ -445,12 +453,13 @@ export class WorkflowService {
     // only after it is approved (below), on every path including resume: a rejected Run keeps its script.
     const load = async (): Promise<DefineWorkflowConfig> => {
       try {
-        return (
-          await loadWorkflow(source, {
-            ...(this.deps.cacheDir ? { cacheDir: this.deps.cacheDir } : {}),
-            ...(sourcePath ? { sourcePath } : {}),
-          })
-        ).config
+        const loaded = await loadWorkflow(source, {
+          ...(this.deps.cacheDir ? { cacheDir: this.deps.cacheDir } : {}),
+          ...(sourcePath ? { sourcePath } : {}),
+          ...(executionSource !== undefined ? { executionSource } : {}),
+        })
+        if (loaded.executionSource !== undefined) executionSource = loaded.executionSource
+        return loaded.config
       } catch (error) {
         throw new WorkflowProtocolError(
           "invalid_args",
@@ -478,7 +487,12 @@ export class WorkflowService {
     )
     // Journaled while still queued: a Run refused or stopped before it starts keeps its script (resumable) and a
     // terminal record. The orchestrator's own `begin` later rewrites the same files.
-    await this.deps.journal.begin(store.get(runId)!, { source, args, instance: this.deps.instance })
+    await this.deps.journal.begin(store.get(runId)!, {
+      source,
+      args,
+      instance: this.deps.instance,
+      ...(executionSource !== undefined ? { executionSource } : {}),
+    })
     const live: LiveRun = { stop: () => {}, units: new Map() }
     const queuedStop = new AbortController()
     live.stop = (reason) => queuedStop.abort(new Error(reason ?? "stopped"))
@@ -537,6 +551,7 @@ export class WorkflowService {
         const output = await runWorkflow({
           config,
           source,
+          ...(executionSource !== undefined ? { executionSource } : {}),
           identity,
           args,
           host: this.deps.host,
@@ -594,10 +609,7 @@ export class WorkflowService {
 
   /** Load a saved Workflow by key (for `ctx.workflow`). */
   private async resolveDurable(name: string): Promise<DefineWorkflowConfig> {
-    const registry = await buildRegistry({
-      directory: this.deps.location,
-      ...(this.deps.cacheDir ? { cacheDir: this.deps.cacheDir } : {}),
-    })
+    const registry = await this.buildRegistry()
     const entry = registry.entries.get(name)
     if (!entry)
       throw new Error(
@@ -610,6 +622,14 @@ export class WorkflowService {
         ...(this.deps.cacheDir ? { cacheDir: this.deps.cacheDir } : {}),
       })
     ).config
+  }
+
+  /** The live registry for this location, with the service's cache dir. */
+  private buildRegistry() {
+    return buildRegistry({
+      directory: this.deps.location,
+      ...(this.deps.cacheDir ? { cacheDir: this.deps.cacheDir } : {}),
+    })
   }
 
   /** The session a surface-started Run is attributed to. */
@@ -769,6 +789,28 @@ export class WorkflowService {
       .toSorted((a, b) => a.raisedAt - b.raisedAt)
       .map((entry) => (entry.answers.length > 0 ? entry.answers : null))
     const replay: ReplayPlan = { units, answers, rerunFailed, diverged: false }
+    // A Workflow with local imports resumes from its own journal: `execution.ts` (the bundled module, imports
+    // inlined) is imported directly, so none of the original files are read — resume works even if they were
+    // edited, moved or removed. Records journaled before `execution.ts` existed fall back to re-bundling, using
+    // the durable file's path only to locate its relative imports: the entry bytes bundled are still the
+    // journaled `record.source`, so an edited file cannot change what a resume runs. When the file is gone and
+    // its imports cannot be located, the resume fails with a clear error rather than running different code.
+    let executionSource: string | undefined
+    let sourcePath: string | undefined
+    if (record.executionSource !== undefined) {
+      executionSource = record.executionSource
+    } else if (record.run.workflow.provenance === "durable" && hasRelativeImports(record.source)) {
+      const key = record.run.workflow.key
+      const entry = key ? (await this.buildRegistry()).entries.get(key) : undefined
+      if (!entry) {
+        throw new WorkflowProtocolError(
+          "invalid_state",
+          `Run "${runId}" was journaled before Workflows kept their bundled script, and its durable file ` +
+            `(${key ?? record.run.workflow.name}) is no longer registered. It cannot be resumed.`,
+        )
+      }
+      sourcePath = entry.absPath
+    }
     // The journaled script, not the file on disk: a resume replays the Run that happened, even if the durable
     // file was edited since (a changed script diverges and runs live from the first changed Unit).
     return this.startRun(
@@ -777,7 +819,16 @@ export class WorkflowService {
         args: record.args,
         ...(run.parentSessionID ? { parentSessionID: run.parentSessionID } : {}),
       },
-      { ...options, replay, resumeOf: runId, identity: run.workflow },
+      {
+        ...options,
+        replay,
+        resumeOf: runId,
+        identity: run.workflow,
+        resume: {
+          ...(sourcePath ? { sourcePath } : {}),
+          ...(executionSource !== undefined ? { executionSource } : {}),
+        },
+      },
     )
   }
 

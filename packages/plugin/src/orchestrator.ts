@@ -81,6 +81,8 @@ export function previewResult(result: unknown, max = 400): string | null {
 export interface RunWorkflowInput {
   config: DefineWorkflowConfig
   source: string
+  /** The bundled module for a Workflow with local imports, journaled so resume reads none of the source files. */
+  executionSource?: string
   identity: WorkflowIdentity
   args?: unknown
   host: EngineHost
@@ -216,6 +218,7 @@ export async function runWorkflow(input: RunWorkflowInput): Promise<RunWorkflowO
               source: input.source,
               args,
               instance: input.instance ?? "",
+              ...(input.executionSource !== undefined ? { executionSource: input.executionSource } : {}),
             })
         : undefined,
     )

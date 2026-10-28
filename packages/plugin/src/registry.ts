@@ -15,7 +15,7 @@ import { readFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 
-import { loadWorkflowConfig } from "./loader"
+import { loadWorkflowConfig, mayDefineWorkflow } from "./loader"
 import { stringifyError } from "./runner"
 import type { DefineWorkflowConfig, WorkflowMeta } from "./workflow"
 
@@ -173,8 +173,11 @@ export interface BuildRegistryInput {
   directory: string
   /** Override the scanned scopes (tests). Defaults to {@link configDirs}. */
   dirs?: string[]
-  /** Load a workflow module's config from its file path (tests). Defaults to read-bytes → {@link loadWorkflowConfig}. */
-  loadConfig?: (absPath: string) => Promise<DefineWorkflowConfig>
+  /**
+   * Load a workflow module's config from its file path (tests). Defaults to read-bytes → pre-filter →
+   * {@link loadWorkflowConfig}. Returning `null` means "not a Workflow entrypoint" (skipped, not a failure).
+   */
+  loadConfig?: (absPath: string) => Promise<DefineWorkflowConfig | null>
   /** Loader cache directory (tests). */
   cacheDir?: string
 }
@@ -185,28 +188,38 @@ export interface BuildRegistryInput {
  * written/edited mid-session is found without a restart (opencode's own command/tool registries are frozen
  * per-process; the plugin owns its discovery precisely to beat that). LAST-WINS across scopes ⇒ project beats
  * global; the shadowed file and any load failure are recorded, not dropped.
+ *
+ * Every `.ts` under a `workflows/` root is a candidate — helper modules included. A candidate with no
+ * entrypoint-shaped export is skipped before it is imported (see {@link mayDefineWorkflow}), so `lib/**`
+ * decomposition stays quiet and never runs; a candidate that looks like an entrypoint but fails to load is a
+ * genuine failure and is reported.
  */
 export async function buildRegistry(input: BuildRegistryInput): Promise<Registry> {
   const dirs = input.dirs ?? configDirs(input.directory)
   const load =
     input.loadConfig ??
-    ((absPath: string) =>
-      readFile(absPath, "utf8").then((source) =>
-        loadWorkflowConfig(source, { sourcePath: absPath, ...(input.cacheDir ? { cacheDir: input.cacheDir } : {}) }),
-      ))
+    (async (absPath: string) => {
+      const source = await readFile(absPath, "utf8")
+      if (!mayDefineWorkflow(source)) return null
+      return loadWorkflowConfig(source, {
+        sourcePath: absPath,
+        ...(input.cacheDir ? { cacheDir: input.cacheDir } : {}),
+      })
+    })
   const entries = new Map<string, RegistryEntry>()
   const collisions: Registry["collisions"] = []
   const failures: Registry["failures"] = []
 
   for (const dir of dirs) {
     for (const { absPath, relMatch } of await scanWorkflowFiles(dir)) {
-      let config: DefineWorkflowConfig
+      let config: DefineWorkflowConfig | null
       try {
         config = await load(absPath)
       } catch (err) {
         failures.push({ absPath, error: stringifyError(err) })
         continue
       }
+      if (!config) continue
       const key = workflowKey(relMatch, config.meta.name)
       const prev = entries.get(key)
       if (prev)
