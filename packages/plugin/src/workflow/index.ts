@@ -202,21 +202,41 @@ export interface AgentOpts<S extends z.ZodType | JsonSchemaInput | undefined = u
 }
 
 /**
- * Runs one Unit: prompts a (by default freshly-created) child session under the named subagent. With a
- * `schema`, it resolves to that schema's inferred type (validated structured output); without one, to the
- * Unit's final assistant text. Either way `null` on failure/skip (the drop is recorded in
- * {@link WorkflowContext.errors}).
- */
-/**
- * A zod schema types the result; a JSON Schema returns `unknown` (validated at run time); none returns text.
+ * The value a Unit resolves to for a schema `S`: a zod schema's inferred type; the Unit's final text when no schema
+ * was given; `unknown` for a plain JSON Schema (which is validated at run time).
  *
  * In a refinement loop (`draft = await agent(\`…${draft}\`)`), declare the loop variable as `string`, not
  * `string | null`: TypeScript otherwise reports circular inference for the values computed inside the loop.
  */
-export type AgentFn = <S extends z.ZodType | JsonSchemaInput | undefined = undefined>(
-  prompt: string,
-  opts?: AgentOpts<S>,
-) => Promise<(S extends z.ZodType ? z.infer<S> : S extends undefined ? string : unknown) | null>
+export type UnitValue<S extends z.ZodType | JsonSchemaInput | undefined> = S extends z.ZodType
+  ? z.infer<S>
+  : S extends undefined
+    ? string
+    : unknown
+
+/**
+ * Runs one Unit: prompts a (by default freshly-created) child session under the named subagent. With a
+ * `schema`, it resolves to that schema's inferred type (validated structured output); without one, to the
+ * Unit's final assistant text. Either way `null` on failure/skip (the drop is recorded in
+ * {@link WorkflowContext.errors}).
+ *
+ * Passing `{ receipts: true }` resolves to a {@link UnitReceipt} instead — the same value, plus the Unit's id and
+ * what its session actually did. The Unit itself is identical either way: one call, one Unit, one session.
+ *
+ * `receipts` is deliberately NOT part of {@link AgentOpts}: it lives in these overloads so the resolved type follows
+ * the flag. Write `receipts: true` inline (or on an `as const` object) — a plain `boolean` variable cannot select
+ * the receipt overload, which is the point: no call gets typed as a value while returning a receipt at run time.
+ */
+export interface AgentFn {
+  <S extends z.ZodType | JsonSchemaInput | undefined = undefined>(
+    prompt: string,
+    opts: AgentOpts<S> & { receipts: true },
+  ): Promise<UnitReceipt<UnitValue<S>>>
+  <S extends z.ZodType | JsonSchemaInput | undefined = undefined>(
+    prompt: string,
+    opts?: AgentOpts<S> & { receipts?: false },
+  ): Promise<UnitValue<S> | null>
+}
 
 /** A dropped Unit, surfaced via {@link WorkflowContext.errors} (no silent drops). */
 export interface WorkflowError {
@@ -234,8 +254,8 @@ export interface WorkflowError {
  * Run a list of Units concurrently and wait for all to settle (a **barrier**). Bounded by the workflow's
  * `meta.concurrency` (or the plugin default), so a fan-out never exceeds the limiter. Results are returned
  * **positionally aligned** to `thunks`; a Unit that fails/throws resolves to `null` in its slot (the fan-out
- * is not aborted) and is appended to {@link WorkflowContext.errors}. Pair with {@link CollectFn} to drop the
- * nulls with type-narrowing.
+ * is not aborted) and is appended to {@link WorkflowContext.errors}. With `receipts` the slot is a receipt whose
+ * `value` is `null`, so `collect()` keeps it. Pair with {@link CollectFn} to drop the nulls with type-narrowing.
  */
 export type ParallelFn = <T>(thunks: Array<() => Promise<T>>) => Promise<Array<T | null>>
 
@@ -320,6 +340,54 @@ export interface WorkflowCapabilities {
   }
   /** `fetch`, aborted when the Run stops. */
   fetch: (input: string | URL | Request, init?: RequestInit) => Promise<Response>
+}
+
+/**
+ * One tool call a Unit's session recorded — engine-owned, never model-authored. Engine-owned tools (this plugin's
+ * `workflow_result` and `workflow_question`) appear alongside the model's own calls.
+ */
+export interface UnitToolCall {
+  name: string
+  /**
+   * The call input rendered as JSON — possibly partial while the tool is still streaming — clipped to at most
+   * 4 000 UTF-16 code units (a clipped value ends in `…`, and a surrogate pair is never split).
+   */
+  input: string
+  /**
+   * The host's raw result for the call, unmodified — its text, or JSON for a structured result — clipped to at most
+   * 4 000 UTF-16 code units like {@link UnitToolCall.input} (a clipped value ends in `…`, and a surrogate pair is
+   * never split). The call's `error.message` when it returned nothing at all.
+   */
+  output: string
+  /**
+   * The call **finished** (`status === "completed"` with no error) — NOT that the command succeeded: a `shell` call
+   * that exits non-zero is still a finished call.
+   *
+   * No exit code is added to {@link UnitToolCall.output}: the receipt is the host's record, unmodified, so a failure
+   * may or may not be readable from it. When it matters, assert on the command's effect instead (a file the Unit
+   * wrote, a `ctx.$` check afterwards).
+   */
+  successful: boolean
+}
+
+/**
+ * What `agent(…, { receipts: true })` resolves to. Never `null`: a failed Unit still reports what it did. That also
+ * means `collect()` around a fan-out of receipts keeps failed Units — filter on `value`.
+ */
+export interface UnitReceipt<T> {
+  /** The Unit's result — exactly what `agent()` would have returned without `receipts`. `null` on failure/skip. */
+  value: T | null
+  /** The Unit's stable id (a `Unit.unitId`). */
+  unitId: string
+  /**
+   * The tool calls the Unit's session recorded. Read lazily on first access (memoized), so a Workflow that never
+   * asks costs nothing extra. `[]` when the Unit never had a session (replayed, setup failure) or ran no tools — for
+   * a replayed Unit that means *unknown*, not "did nothing": a resumed Run cannot vouch for an earlier Run's work.
+   *
+   * Not enumerable: `JSON.stringify(receipt)` is `{ value, unitId }` and reads nothing. `{ ...receipt }` therefore
+   * loses this property — copy it deliberately (`{ ...receipt, toolCalls: await receipt.toolCalls }`) or await it.
+   */
+  readonly toolCalls: Promise<UnitToolCall[]>
 }
 
 /** The context handed to a Workflow's `run`. */

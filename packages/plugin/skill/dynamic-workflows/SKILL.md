@@ -54,20 +54,20 @@ export default defineWorkflow({
 
 ## The context
 
-| Member                                   | Behaviour                                                                                                                                                                                          |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agent(prompt, opts?)`                   | One Unit. Resolves to the final text, or — with `schema` — to the validated value. A failed Unit resolves to **`null`** and is added to `errors`; it never throws.                                 |
-| `pipeline(items, ...stages)`             | Each item runs through all stages on its own, with **no barrier** between items. Stages get `(previous, item, index)`. A stage that throws turns that item into `null` and skips its later stages. |
-| `parallel(thunks)`                       | Runs `() => Promise` thunks concurrently and waits for all — a **barrier**. A thunk that throws becomes `null`; the call never rejects.                                                            |
-| `collect(xs)`                            | Drops the `null`s, with the narrowed type.                                                                                                                                                         |
-| `errors`                                 | Every dropped Unit so far: `{ unit, prompt, subagent, error }`.                                                                                                                                    |
-| `phase(title)`, `log(message)`           | Progress. `log` lines are what the person reads while it runs.                                                                                                                                     |
-| `ask(questions, { fallback, graceMs? })` | Asks the person (see below).                                                                                                                                                                       |
-| `budget`                                 | `{ total, spent(), remaining() }` in output tokens for this Run.                                                                                                                                   |
-| `signal`                                 | The Run's `AbortSignal`.                                                                                                                                                                           |
-| `$`, `file`, `fetch`                     | Shell, files and HTTP, confined to the project (see below).                                                                                                                                        |
-| `workflow(name, args?)`                  | Run a **saved** Workflow as one step of this Run and get its result (see below).                                                                                                                   |
-| `worktrees()`                            | The worktrees kept by `isolation: "worktree"` Units that changed files.                                                                                                                            |
+| Member                                   | Behaviour                                                                                                                                                                                                                                                       |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent(prompt, opts?)`                   | One Unit. Resolves to the final text, or — with `schema` — to the validated value. A failed Unit resolves to **`null`** and is added to `errors`; it never throws. With `{ receipts: true }` it resolves to `{ value, unitId, toolCalls }` instead (see below). |
+| `pipeline(items, ...stages)`             | Each item runs through all stages on its own, with **no barrier** between items. Stages get `(previous, item, index)`. A stage that throws turns that item into `null` and skips its later stages.                                                              |
+| `parallel(thunks)`                       | Runs `() => Promise` thunks concurrently and waits for all — a **barrier**. A thunk that throws becomes `null`; the call never rejects.                                                                                                                         |
+| `collect(xs)`                            | Drops the `null`s, with the narrowed type.                                                                                                                                                                                                                      |
+| `errors`                                 | Every dropped Unit so far: `{ unit, prompt, subagent, error }`.                                                                                                                                                                                                 |
+| `phase(title)`, `log(message)`           | Progress. `log` lines are what the person reads while it runs.                                                                                                                                                                                                  |
+| `ask(questions, { fallback, graceMs? })` | Asks the person (see below).                                                                                                                                                                                                                                    |
+| `budget`                                 | `{ total, spent(), remaining() }` in output tokens for this Run.                                                                                                                                                                                                |
+| `signal`                                 | The Run's `AbortSignal`.                                                                                                                                                                                                                                        |
+| `$`, `file`, `fetch`                     | Shell, files and HTTP, confined to the project (see below).                                                                                                                                                                                                     |
+| `workflow(name, args?)`                  | Run a **saved** Workflow as one step of this Run and get its result (see below).                                                                                                                                                                                |
+| `worktrees()`                            | The worktrees kept by `isolation: "worktree"` Units that changed files.                                                                                                                                                                                         |
 
 ### `agent()` options
 
@@ -85,6 +85,8 @@ export default defineWorkflow({
 | `isolation`                    | `"worktree"`: run the Unit in a fresh git worktree — for Units that **edit files in parallel** (see below).                                   |
 | `location`                     | Run the Unit in a directory you prepared yourself.                                                                                            |
 
+`{ receipts: true }` is a separate flag, not an `AgentOpts` member (see "Asserting what a Unit did").
+
 ### Typed Units
 
 With `schema`, the Unit gets a `workflow_result` tool whose input is your schema. Every call is validated, so the
@@ -97,6 +99,41 @@ call; if all fail the Unit is `null`. So:
   their citations.
 - Keep schemas small and concrete; use `.describe()` on fields whose meaning is not obvious.
 - Put the instruction for the _work_ in the prompt; the engine adds the instruction to submit the result.
+
+### Asserting what a Unit did
+
+A Unit's answer is its own account of its work; a receipt is the engine's record of it. `agent(…, { receipts: true })`
+resolves to `{ value, unitId, toolCalls }`: `value` is exactly what `agent()` returns without `receipts`, and
+`toolCalls` is the tool calls the Unit's session made — `{ name, input, output, successful }`, clipped to 4 000
+characters each — so a script can assert on evidence instead of prose. Engine tools (`workflow_result`,
+`workflow_question`) are in the list too:
+
+```ts
+const receipt = await agent("Create src/notes.txt containing exactly: migrated", {
+  label: "migrate",
+  receipts: true,
+})
+const calls = await receipt.toolCalls
+if (!calls.some((call) => call.name === "write" && call.successful))
+  throw new Error(`the file was never written: ${receipt.value}`)
+```
+
+`toolCalls` starts the transcript read at the property access — not at resolve time; what you await is a promise — and
+memoizes it, so a receipt you never read costs nothing; it is `[]` for a Unit that never had a session or ran no
+tools. A Unit that failed still reports what it did — `value` is `null`, the calls are the evidence. And because a
+receipt is never `null`, `collect()` around a fan-out of receipts keeps failed Units — filter on `value`. A session
+that cannot be read throws rather than looking empty, so the check above never passes on a read failure. For a Unit
+replayed on resume `[]` means _unknown_, not "did nothing": a resumed Run cannot vouch for an earlier Run's work.
+
+`successful` means the call **finished** (`status: "completed"`, no error), not that it succeeded: a `shell` call that
+exits non-zero is still a finished call. `output` is the host's raw result with nothing added, so you may or may not be
+able to read a failure from it — when it matters, assert on the command's **effect** (a file the Unit wrote, a `ctx.$`
+check). `name` is the tool's own id (the check above matches `write`, the tool the repo's live test exercises) — assert
+on the id you expect the Unit to use. `input` is the call input rendered as JSON, possibly partial while streaming, and
+clipped — so not always parseable. Write `receipts: true` inline (or on an `as const` object): a plain `boolean`
+variable does not select the receipt overload and is a type error. A returned receipt is journaled as
+`{ value, unitId }` — `toolCalls` is not enumerable, so serializing it never reads the transcript, and `{ ...receipt }`
+drops it silently (`{ ...receipt, toolCalls: await receipt.toolCalls }` if you need a plain object).
 
 ### Writing Unit prompts
 
