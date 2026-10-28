@@ -491,3 +491,311 @@ describe("worktree isolation", () => {
     expect(state.errors[0]?.error).toContain("not available on this host")
   })
 })
+
+describe("agent receipts — what a Unit's session actually did", () => {
+  test("resolves to { value, unitId, toolCalls } and reports each call the session recorded", async () => {
+    const units: Unit[] = []
+    const { ctx, host } = makeCtx(
+      {
+        reply: {
+          tools: [
+            { name: "bash", input: { command: "bun run migrate" }, content: "migrated 3 sites" },
+            { name: "read", input: { path: "src/a.ts" }, content: [{ type: "text", text: "export const a = 1\n" }] },
+          ],
+          text: "migration done",
+        },
+      },
+      { events: { onUnit: (u) => units.push(u) } },
+    )
+    const receipt = await ctx.agent("migrate", { label: "migration", receipts: true })
+    expect(receipt.value).toBe("migration done")
+    expect(receipt.unitId).toBe(units.at(-1)!.unitId)
+    const calls = await receipt.toolCalls
+    expect(calls.map((call) => call.name)).toEqual(["bash", "read"])
+    expect(JSON.parse(calls[0]!.input)).toEqual({ command: "bun run migrate" })
+    expect(calls[0]!.output).toBe("migrated 3 sites")
+    expect(calls[1]!.output).toBe("export const a = 1\n")
+    expect(calls.map((call) => call.successful)).toEqual([true, true])
+    // `receipts` is engine-level only: the Unit is created exactly as it would be without it.
+    expect(host.creates[0]!.title).toBe("⟡ wf · test · migration")
+    expect(host.creates[0]).not.toHaveProperty("receipts")
+  })
+
+  test("without receipts agent() still resolves to the bare value, and to null on failure", async () => {
+    const { ctx, host } = makeCtx({
+      replies: [
+        { text: "hello back" },
+        { error: "rate limited" },
+        { tools: [{ name: "bash", input: { command: "true" }, content: "ok" }], text: "with tools" },
+      ],
+    })
+    expect(await ctx.agent("a")).toBe("hello back")
+    expect(await ctx.agent("b")).toBeNull()
+    // A Unit that ran tools is still just its text: no receipt on the default path.
+    expect(await ctx.agent("c")).toBe("with tools")
+    // Exactly one transcript read per Unit — the runner's own. The default path reads nothing extra, even for a Unit
+    // that ran tools, which is what "a Workflow that never asks pays nothing" means.
+    expect(host.contexts).toHaveLength(3)
+  })
+
+  test("a failed Unit reports value: null and STILL reports what it did", async () => {
+    const { ctx, state } = makeCtx({
+      reply: { tools: [{ name: "bash", input: { command: "bun test" }, content: "1 failing" }], text: "no json here" },
+    })
+    const receipt = await ctx.agent("do it", { schema: z.object({ ok: z.boolean() }), retries: 0, receipts: true })
+    expect(receipt.value).toBeNull()
+    expect(state.errors.at(-1)?.error).toContain("structured output failed after 0 repair turn(s)")
+    // The raw evidence of what the Unit did outlives its failure.
+    const calls = await receipt.toolCalls
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.name).toBe("bash")
+    expect(calls[0]!.output).toBe("1 failing")
+  })
+
+  test("a call that errored or never completed is not successful", async () => {
+    const { ctx } = makeCtx({
+      reply: {
+        tools: [
+          { name: "bash", input: { command: "false" }, content: "exit 1", status: "error", error: "command failed" },
+          { name: "bash", input: { command: "sleep 60" }, status: "running" },
+        ],
+        text: "tried",
+      },
+    })
+    const receipt = await ctx.agent("run it", { label: "runner", receipts: true })
+    const calls = await receipt.toolCalls
+    expect(calls.map((call) => call.successful)).toEqual([false, false])
+    expect(calls[0]!.output).toBe("exit 1")
+    expect(calls[1]!.output).toBe("")
+  })
+
+  test("a failed call with no output reports its error message, not an empty string", async () => {
+    const { ctx } = makeCtx({
+      reply: {
+        tools: [{ name: "shell", input: { command: "bun run migrate" }, status: "error", error: "command not found" }],
+        text: "tried",
+      },
+    })
+    const receipt = await ctx.agent("run it", { label: "runner", receipts: true })
+    const [call] = await receipt.toolCalls
+    // A fallback receipt-only by design (`toTranscript` shows the host's raw text instead): a reason for the drop is
+    // evidence, an empty string is not.
+    expect(call!.output).toBe("command not found")
+    expect(call!.successful).toBe(false)
+  })
+
+  test("a host-reported exit code is not appended: output stays the host's evidence, unmodified", async () => {
+    const { ctx } = makeCtx({
+      reply: {
+        tools: [
+          {
+            name: "shell",
+            input: { command: "bun run migrate" },
+            content: '{"ok":true,"n":2}',
+            metadata: { exit: 1 },
+          },
+          { name: "shell", input: { command: "git status" }, content: "clean", metadata: { exitCode: 0 } },
+        ],
+        text: "ran the migration",
+      },
+    })
+    const receipt = await ctx.agent("migrate", { label: "migration", receipts: true })
+    const calls = await receipt.toolCalls
+    // `metadata` is an arbitrary passthrough that even a successful call can carry, so a marker would corrupt the
+    // evidence — and a JSON result would stop being parseable.
+    expect(calls[0]!.output).toBe('{"ok":true,"n":2}')
+    expect(JSON.parse(calls[0]!.output)).toEqual({ ok: true, n: 2 })
+    expect(calls[1]!.output).toBe("clean")
+    // `successful` only says the call FINISHED; the evidence decides whether the command worked.
+    expect(calls.map((call) => call.successful)).toEqual([true, true])
+  })
+
+  test("a replayed Unit has no session, so it reports no calls and reads nothing", async () => {
+    const replay: ReplayPlan = {
+      units: new Map([
+        [1, { prompt: "first", status: "succeeded", output: "one", schema: false, subagent: "general" }],
+      ]),
+      answers: [],
+      rerunFailed: true,
+      diverged: false,
+    }
+    const { ctx, host } = makeCtx({}, { replay })
+    const receipt = await ctx.agent("first", { label: "from the journal", receipts: true })
+    expect(receipt.value).toBe("one")
+    expect(host.prompts).toHaveLength(0)
+    expect(await receipt.toolCalls).toEqual([])
+    expect(host.contexts).toEqual([])
+  })
+
+  test("a Unit that ran no tools reports []", async () => {
+    const { ctx } = makeCtx({ reply: { text: "just talking" } })
+    const receipt = await ctx.agent("talk", { label: "talker", receipts: true })
+    expect(receipt.value).toBe("just talking")
+    expect(await receipt.toolCalls).toEqual([])
+  })
+
+  test("a Unit stopped before its session existed reports no calls and reads nothing", async () => {
+    const controller = new AbortController()
+    const { ctx, host, state } = makeCtx({}, { signal: controller.signal })
+    controller.abort()
+    const receipt = await ctx.agent("x", { label: "gone", receipts: true })
+    expect(receipt.value).toBeNull()
+    expect(receipt.unitId).toEqual(expect.any(String))
+    expect(await receipt.toolCalls).toEqual([])
+    expect(host.creates).toHaveLength(0)
+    expect(host.contexts).toEqual([])
+    expect(state.errors).toHaveLength(1)
+  })
+
+  test("a very large payload is clipped, and what is kept is still useful", async () => {
+    const body = "migrated site 42\n".repeat(5_000)
+    const { ctx } = makeCtx({
+      reply: {
+        tools: [{ name: "read", input: { command: "cat huge.log", padding: "p".repeat(20_000) }, content: body }],
+        text: "read it",
+      },
+    })
+    const receipt = await ctx.agent("read the log", { label: "reader", receipts: true })
+    const [call] = await receipt.toolCalls
+    // MAX_TOOL_CALL_TEXT in context.ts — the clip keeps thousands of characters, not the 160 of an audit line.
+    expect(call!.output.length).toBe(4_000)
+    expect(call!.output.startsWith("migrated site 42\nmigrated site 42\n")).toBe(true)
+    expect(call!.output.endsWith("…")).toBe(true)
+    expect(call!.input.length).toBe(4_000)
+    expect(call!.input).toContain("cat huge.log")
+    expect(call!.input.endsWith("…")).toBe(true)
+  })
+
+  test("toolCalls is lazy (no read until asked) and memoized (one read for two asks)", async () => {
+    const { ctx, host } = makeCtx({
+      reply: { tools: [{ name: "bash", input: { command: "true" }, content: "ok" }], text: "done" },
+    })
+    const receipt = await ctx.agent("run", { label: "runner", receipts: true })
+    const ownRead = host.contexts.length // the runner's own read of the Unit transcript
+    await Bun.sleep(1)
+    expect(host.contexts).toHaveLength(ownRead) // never accessed ⇒ never read
+    const first = await receipt.toolCalls
+    const second = await receipt.toolCalls
+    expect(first).toHaveLength(1)
+    expect(second).toBe(first) // the same memoized promise
+    expect(host.contexts).toHaveLength(ownRead + 1)
+  })
+
+  test("a session that cannot be read rejects from toolCalls, and does not fail the Unit", async () => {
+    const { ctx, host } = makeCtx({ reply: { text: "done" }, contextError: "socket closed", contextErrorFrom: 2 })
+    const receipt = await ctx.agent("x", { label: "reader", receipts: true })
+    expect(receipt.value).toBe("done") // the Unit itself settled normally
+    await expect(receipt.toolCalls).rejects.toThrow(
+      "agent({ receipts }): reading the session of Unit reader failed: socket closed",
+    )
+    // Memoized rejection: asking again does not read again.
+    await expect(receipt.toolCalls).rejects.toThrow("socket closed")
+    expect(host.contexts).toHaveLength(2)
+  })
+
+  test("the tracked in-flight promise IS the promise agent() returned, on both paths", async () => {
+    const { ctx, state } = makeCtx({ reply: { hang: true } })
+    const receiptTask = ctx.agent("a", { timeoutMs: 20, receipts: true })
+    const valueTask = ctx.agent("b", { timeoutMs: 20 })
+    expect(state.inflight.size).toBe(2)
+    // Identity, not the count: a fire-and-forget author holds the promise the Run actually drains.
+    expect(state.inflight.has(receiptTask)).toBe(true)
+    expect(state.inflight.has(valueTask)).toBe(true)
+    const [receipt, value] = await Promise.all([receiptTask, valueTask])
+    expect(receipt.value).toBeNull()
+    expect(value).toBeNull()
+    // Nothing leaks: both Units unregistered themselves as they settled.
+    expect(state.inflight.size).toBe(0)
+  })
+
+  test("a fire-and-forget agent() whose Unit rejects leaves no unhandled rejection, on both paths", async () => {
+    // A genuine host surprise: the event sink throws while announcing the settled Unit.
+    const unhandled: unknown[] = []
+    const onUnhandled = (reason: unknown) => unhandled.push(reason)
+    process.on("unhandledRejection", onUnhandled)
+    try {
+      for (const receipts of [false, true]) {
+        const { ctx, state } = makeCtx(
+          { reply: { text: "done" } },
+          {
+            events: {
+              onUnit: (unit) => {
+                if (unit.status === "succeeded") throw new Error("onUnit blew up")
+              },
+            },
+          },
+        )
+        const returned = receipts ? ctx.agent("a", { receipts: true }) : ctx.agent("a")
+        expect(state.inflight.has(returned)).toBe(true)
+        await Bun.sleep(20)
+        expect(state.inflight.has(returned)).toBe(false)
+      }
+      expect(unhandled).toEqual([])
+    } finally {
+      process.off("unhandledRejection", onUnhandled)
+    }
+  })
+
+  test("a receipt serializes to { value, unitId }: no read, no lie in the journal", async () => {
+    const { ctx, host } = makeCtx({
+      reply: { tools: [{ name: "bash", input: { command: "true" }, content: "ok" }], text: "done" },
+    })
+    const receipt = await ctx.agent("run", { label: "runner", receipts: true })
+    const ownRead = host.contexts.length
+    expect(Object.keys(receipt)).toEqual(["value", "unitId"])
+    expect(JSON.stringify(receipt)).toBe(`{"value":"done","unitId":"${receipt.unitId}"}`)
+    // Structured-cloneable too (a promise is not): what a store or a journal does to a result must not throw.
+    const clone = structuredClone(receipt) as unknown as Record<string, unknown>
+    expect(clone).toEqual({ value: "done", unitId: receipt.unitId })
+    expect(host.contexts).toHaveLength(ownRead) // serializing read nothing
+    expect(await receipt.toolCalls).toHaveLength(1) // and the evidence is still there when asked for
+  })
+
+  test("a clip never ends in the middle of a surrogate pair", async () => {
+    const body = `${"a".repeat(3_998)}😀${"b".repeat(100)}`
+    const { ctx } = makeCtx({
+      reply: { tools: [{ name: "bash", input: { command: "echo" }, content: body }], text: "done" },
+    })
+    const receipt = await ctx.agent("run", { label: "runner", receipts: true })
+    const [call] = await receipt.toolCalls
+    // The pair straddles the cut, so both halves are dropped rather than one lone half being kept.
+    expect(call!.output).toBe(`${"a".repeat(3_998)}…`)
+  })
+
+  test("collect() keeps a failed Unit's receipt: a receipt is never a null slot", async () => {
+    const { ctx, state } = makeCtx({ replies: [{ text: "fine" }, { error: "rate limited" }] })
+    const kept = ctx.collect(
+      await ctx.parallel([() => ctx.agent("one", { receipts: true }), () => ctx.agent("two", { receipts: true })]),
+    )
+    // Without receipts the second slot would be `null` and `collect` would drop it; an opted-in fan-out keeps both,
+    // so the shape of an opted-in `parallel` + `collect` differs on purpose (`value` is what carries the failure).
+    expect(kept).toHaveLength(2)
+    expect(kept.map((receipt) => receipt.value)).toEqual(["fine", null])
+    expect(kept[1]!.unitId).toEqual(expect.any(String))
+    expect(state.errors).toHaveLength(1)
+    expect(await kept[1]!.toolCalls).toEqual([])
+  })
+
+  test("receipts flow through pipeline, parallel and collect as the receipt object", async () => {
+    const { ctx } = makeCtx({
+      reply: (call) => ({
+        tools: [{ name: "bash", input: { command: call.text }, content: "ok" }],
+        text: `did ${call.text}`,
+      }),
+    })
+    const reviewed = await ctx.pipeline(
+      ["a.ts", "b.ts"],
+      (file) => ctx.agent(`review ${file}`, { label: file, receipts: true }),
+      async (receipt) => ({ value: receipt.value, calls: (await receipt.toolCalls).length }),
+    )
+    expect(reviewed).toEqual([
+      { value: "did review a.ts", calls: 1 },
+      { value: "did review b.ts", calls: 1 },
+    ])
+    const fanout = ctx.collect(
+      await ctx.parallel([() => ctx.agent("one", { receipts: true }), () => ctx.agent("two", { receipts: true })]),
+    )
+    expect(fanout.map((receipt) => receipt.value)).toEqual(["did one", "did two"])
+    expect(await Promise.all(fanout.map((receipt) => receipt.toolCalls))).toHaveLength(2)
+  })
+})

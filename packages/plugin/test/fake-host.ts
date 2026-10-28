@@ -9,11 +9,31 @@
 import type { EngineHost, HostCreateInput, HostMessage, HostSessionInfo } from "../src/host"
 import type { UnitIndex } from "../src/units"
 
+/** One tool call a scripted reply records in its assistant message (the host's own `tool` content part). */
+export interface FakeToolPart {
+  name: string
+  input?: unknown
+  content?: unknown
+  /** Defaults to `"completed"`. */
+  status?: string
+  /** An error message, recorded as the part's `state.error`. */
+  error?: string
+  /**
+   * Extras a real host records on the call that `host.ts` does not declare — a shell call's `metadata: { exit: 1 }`
+   * is the real one, since `session.context` is a passthrough. Recorded verbatim so a test can pin what the engine
+   * does with them; the cast below is the point: the narrow host slice does not name this field, and nothing in the
+   * engine reads it.
+   */
+  metadata?: Record<string, unknown>
+}
+
 export type FakeReply =
   | { text: string }
   | { result: unknown; text?: string }
   /** Call workflow_result with each payload in order (invalid ones get the validation error back). */
   | { results: unknown[]; text?: string }
+  /** An assistant turn whose tool parts are exactly these calls, as a real session would record them. */
+  | { tools: FakeToolPart[]; text?: string }
   | { error: string }
   | { hang: true }
   | { none: true }
@@ -40,6 +60,13 @@ export interface FakeHostOptions {
   promptError?: string
   /** `wait` rejects with this message. */
   waitError?: string
+  /** `context` rejects with this message (a transcript read failure). */
+  contextError?: string
+  /**
+   * With `contextError`: fail only from the Nth `session.context` read on (1-based), so an earlier read still
+   * succeeds. Lets a test break a RECEIPT's read while the Unit's own transcript read is fine.
+   */
+  contextErrorFrom?: number
   /** `interrupt` never resolves (and does not stop the session). */
   interruptHang?: boolean
   /** Worktree support: `changed` decides whether a Unit's worktree is kept; `active: false` = plugin not loaded there. */
@@ -71,6 +98,8 @@ export interface FakeHost extends EngineHost {
   prompts: PromptCall[]
   interrupts: string[]
   generates: string[]
+  /** Session ids read through `session.context`, in order. */
+  contexts: string[]
   sessions: Map<string, FakeSession>
   meter: { active: number; peak: number }
 }
@@ -80,6 +109,7 @@ export function createFakeHost(index: UnitIndex, options: FakeHostOptions = {}):
   const prompts: PromptCall[] = []
   const interrupts: string[] = []
   const generates: string[] = []
+  const contexts: string[] = []
   const sessions = new Map<string, FakeSession>()
   const meter = { active: 0, peak: 0 }
   let counter = 0
@@ -155,6 +185,23 @@ export function createFakeHost(index: UnitIndex, options: FakeHostOptions = {}):
       session.info.outcome = "succeeded"
       return
     }
+    if ("tools" in reply) {
+      const content: NonNullable<HostMessage["content"]> = reply.tools.map((tool) => ({
+        type: "tool",
+        name: tool.name,
+        state: {
+          status: tool.status ?? "completed",
+          input: tool.input,
+          content: tool.content,
+          ...(tool.error ? { error: { message: tool.error } } : {}),
+          ...(tool.metadata ? { metadata: tool.metadata } : {}),
+        } as NonNullable<HostMessage["content"]>[number]["state"],
+      }))
+      if (reply.text) content.push({ type: "text", text: reply.text })
+      session.messages.push(assistant(content))
+      session.info.outcome = "succeeded"
+      return
+    }
     if ("result" in reply || "results" in reply) {
       const payloads = "results" in reply ? reply.results : [reply.result]
       const content: NonNullable<HostMessage["content"]> = []
@@ -198,6 +245,7 @@ export function createFakeHost(index: UnitIndex, options: FakeHostOptions = {}):
     prompts,
     interrupts,
     generates,
+    contexts,
     sessions,
     meter,
     session: {
@@ -240,6 +288,12 @@ export function createFakeHost(index: UnitIndex, options: FakeHostOptions = {}):
         await session?.running
       },
       async context(input) {
+        contexts.push(input.sessionID)
+        if (
+          options.contextError &&
+          (options.contextErrorFrom === undefined || contexts.length >= options.contextErrorFrom)
+        )
+          throw new Error(options.contextError)
         return structuredClone(sessions.get(input.sessionID)?.messages ?? [])
       },
       async interrupt(input) {

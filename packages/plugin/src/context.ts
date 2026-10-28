@@ -1,5 +1,5 @@
 import { createCapabilities } from "./capabilities"
-import { formatModel, toHostModel, type EngineHost, type HostPermissionRule } from "./host"
+import { formatModel, toHostModel, type EngineHost, type HostMessage, type HostPermissionRule } from "./host"
 import { emptyUsage, type Unit, type Usage } from "./protocol"
 import { DEFAULT_SUBAGENT, runUnit, stringifyError, type UnitRunResult } from "./runner"
 import { toUnitOutput } from "./runs"
@@ -17,7 +17,16 @@ import type { UnitBinding, UnitIndex } from "./units"
  * New on V2: Units run through {@link runUnit} on public session APIs; hard limits stop a runaway script with a
  * legible error; and a resumed Run replays the Units a previous Run already finished (start-order replay).
  */
-import type { AgentOpts, AskOptions, AskQuestion, WorkflowContext, WorkflowError, z } from "./workflow"
+import type {
+  AgentOpts,
+  AskOptions,
+  AskQuestion,
+  UnitReceipt,
+  UnitToolCall,
+  WorkflowContext,
+  WorkflowError,
+  z,
+} from "./workflow"
 
 export interface EngineEvents {
   onLog?: (message: string) => void
@@ -64,6 +73,62 @@ export interface RunLimits {
 }
 
 export const DEFAULT_LIMITS: RunLimits = { maxUnits: 1_000, maxItemsPerCall: 4_096, maxUnitSteps: 250 }
+
+/**
+ * How much of one tool call's input and output a {@link UnitReceipt} keeps (characters, per string; counted in
+ * UTF-16 code units).
+ *
+ * Deliberately far larger than the 160-character audit clips in `capabilities.ts`, which would truncate nearly
+ * every interesting call: a tool call is the EVIDENCE a Workflow asserts on, so a whole shell command, a diff hunk
+ * or an edited file body has to survive intact. 4 000 characters covers those, while keeping a Unit that read a
+ * megabyte file from flooding the Run's memory.
+ */
+const MAX_TOOL_CALL_TEXT = 4_000
+
+/** `text`, cut to {@link MAX_TOOL_CALL_TEXT}, with a trailing ellipsis when it had to be clipped. */
+function clipToolText(text: string): string {
+  if (text.length <= MAX_TOOL_CALL_TEXT) return text
+  // Neither half of a surrogate pair is text on its own: back off one unit rather than end the clip mid-emoji.
+  let end = MAX_TOOL_CALL_TEXT - 1
+  const last = text.charCodeAt(end - 1)
+  if (last >= 0xd800 && last <= 0xdbff) end -= 1
+  return `${text.slice(0, end)}…`
+}
+
+/**
+ * A tool call's input or result as text: a string as-is, content parts joined, anything else as JSON. A local
+ * mirror of `service.ts`'s private `textOf`, which reads the same host shapes (that one also feeds posts and
+ * transcripts); kept here so this path imports nothing from the service layer.
+ */
+function toolText(value: unknown): string {
+  if (value === undefined || value === null) return ""
+  if (typeof value === "string") return value
+  if (Array.isArray(value)) {
+    const texts = value
+      .map((entry) =>
+        entry && typeof entry === "object" && "text" in entry ? String((entry as { text: unknown }).text) : "",
+      )
+      .filter(Boolean)
+    if (texts.length > 0) return texts.join("")
+  }
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+/**
+ * What {@link runOne} hands back: the value `agent()` resolves to, plus the two facts a receipt needs — the Unit's
+ * id, and the session it settled with (`null` when it never had one).
+ */
+interface UnitOutcome {
+  value: unknown
+  unitId: string
+  /** The Unit's name in progress (label else subagent, prefixed) — for a legible read-failure message. */
+  label: string | null
+  sessionID: string | null
+}
 
 /** What a previous Run recorded, for resume. Keyed by Unit ordinal (start order). */
 export interface ReplayPlan {
@@ -196,13 +261,17 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
     const label = opts.label ? `${prefix}${opts.label}` : prefix ? `${prefix}${subagent}` : null
     const model = toHostModel(opts.model)
     const withVariant = model && opts.effort && !model.variant ? { ...model, variant: opts.effort } : model
+    /** The session the Unit settled with, once one exists — where a receipt reads its calls from. */
+    let sessionID: string | null = null
+    /** Every return goes through here: the value `agent()` returns, plus what a receipt carries. */
+    const outcome = (value: unknown): UnitOutcome => ({ value, unitId, label, sessionID })
     let schema: z.ZodType | undefined
     try {
       schema = resolveJsonSchema(opts.schema)
     } catch (error) {
       const message = `agent({ schema }) is not a zod schema or a JSON Schema: ${stringifyError(error)}`
       state.errors.push({ unit: label ?? subagent, prompt, subagent, error: message })
-      return null
+      return outcome(null)
     }
     const unit = newUnit({
       runId: input.runId,
@@ -239,13 +308,13 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
             endedAt: Date.now(),
           }
           emit(done)
-          return value.value
+          return outcome(value.value)
         }
         if (!plan.rerunFailed) {
           const error = "replayed failure from the resumed Run"
           emit({ ...unit, status: "failed", error, startedAt: Date.now(), endedAt: Date.now() })
           state.errors.push({ unit: label ?? subagent, prompt, subagent, error })
-          return null
+          return outcome(null)
         }
       } else if (record) {
         plan.diverged = true
@@ -257,7 +326,7 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
 
     emit(unit)
     try {
-      return await limiter.run(async () => {
+      const value = await limiter.run(async () => {
         let current: Unit = { ...unit, status: "running", startedAt: Date.now() }
         emit(current)
         let worktree: { directory: string; branch: string | null; base: string | null } | null = null
@@ -299,17 +368,18 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
           permissions: [...(input.permissions ?? []), ...(opts.permissions ?? [])],
           ask: noAgentQuestions,
           permissionPolicy: input.permissionPolicy ?? (() => "deny"),
-          onSession: (sessionID, stop, resolved) => {
+          onSession: (id, stop, resolved) => {
+            sessionID = id
             current = {
               ...current,
-              sessionID,
+              sessionID: id,
               location: unitLocation ?? input.location,
               model: { requested: current.model.requested, resolved: formatModel(resolved) },
             }
-            const binding = input.index.get(sessionID)
-            if (binding && input.askAgent) binding.ask = input.askAgent(unitId, sessionID)
+            const binding = input.index.get(id)
+            if (binding && input.askAgent) binding.ask = input.askAgent(unitId, id)
             emit(current)
-            events?.onUnitSession?.(unitId, sessionID, stop)
+            events?.onUnitSession?.(unitId, id, stop)
           },
           ...(input.hardBudget && budgetTotal !== null
             ? { mayContinue: (unitOutput: number) => state.tokensSpent + unitOutput < budgetTotal }
@@ -344,9 +414,12 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
           cost: state.usage.cost + usage.cost,
         }
         state.tokensSpent += usage.tokens.output
+        // The session this Unit settled with — the same value `onSession` and the settled Unit carry. A Unit whose
+        // session never existed (a replay, a setup failure) keeps `null`.
+        sessionID = result.sessionID ?? current.sessionID
         const settled: Unit = {
           ...current,
-          sessionID: result.sessionID ?? current.sessionID,
+          sessionID,
           status: result.ok ? "succeeded" : result.stopped ? "stopped" : "failed",
           model: { requested: current.model.requested, resolved: formatModel(result.model) },
           resultPath: result.ok ? result.path : null,
@@ -363,27 +436,97 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
         state.errors.push({ unit: label ?? subagent, prompt, subagent, error: result.error })
         return null
       }, signal)
+      return outcome(value)
     } catch (err) {
       if (err instanceof UnitSetupError) {
         emit({ ...unit, status: "failed", error: err.message, endedAt: Date.now() })
         state.errors.push({ unit: label ?? subagent, prompt, subagent, error: err.message })
-        return null
+        return outcome(null)
       }
       if (err instanceof AbortError) {
         const error = stringifyError(err)
         emit({ ...unit, status: "stopped", error, endedAt: Date.now() })
         state.errors.push({ unit: label ?? subagent, prompt, subagent, error })
-        return null
+        return outcome(null)
       }
       throw err
     }
   }
 
-  const agent = ((prompt: string, opts?: AgentOpts<z.ZodType>) => {
-    const task = runOne(prompt, opts)
-    state.inflight.add(task)
-    task.finally(() => state.inflight.delete(task)).catch(() => {})
-    return task
+  /**
+   * Read the tool calls a Unit's session recorded, straight from the host transcript — never from the model's own
+   * account of what it did. A session that exists but cannot be READ throws instead of reporting no calls: an
+   * assertion like "the migration really ran" must never pass on a read failure.
+   */
+  const readToolCalls = async (outcome: UnitOutcome, sessionID: string): Promise<UnitToolCall[]> => {
+    let messages: readonly HostMessage[]
+    try {
+      messages = await input.host.session.context({ sessionID })
+    } catch (error) {
+      throw new Error(
+        `agent({ receipts }): reading the session of Unit ${outcome.label ?? outcome.unitId} failed: ${stringifyError(error)}`,
+        { cause: error },
+      )
+    }
+    const calls: UnitToolCall[] = []
+    for (const message of messages) {
+      for (const part of message.content ?? []) {
+        if (part.type !== "tool") continue
+        calls.push({
+          name: part.name ?? "tool",
+          input: clipToolText(toolText(part.state?.input)),
+          // Deliberately differs from `toTranscript`: a receipt falls back to the call's error message, the Gateway
+          // transcript shows the host's raw text.
+          output: clipToolText(toolText(part.state?.content) || (part.state?.error?.message ?? "")),
+          successful: part.state?.status === "completed" && !part.state?.error,
+        })
+      }
+    }
+    return calls
+  }
+
+  /**
+   * The receipt `agent(…, { receipts: true })` resolves to. `toolCalls` is a lazily memoized getter: the transcript is
+   * read on first access and never before, so a Workflow that only wants the value pays nothing. A Unit with no
+   * session (replayed, setup failure) has nothing to read and reports `[]` without a host call.
+   */
+  const receiptOf = (outcome: UnitOutcome): UnitReceipt<unknown> => {
+    const { sessionID } = outcome
+    let toolCalls: Promise<UnitToolCall[]> | undefined
+    const receipt = { value: outcome.value, unitId: outcome.unitId } as UnitReceipt<unknown>
+    Object.defineProperty(receipt, "toolCalls", {
+      // NON-ENUMERABLE, deliberately: a receipt is often just `return`ed, and everything downstream of a Run
+      // serializes its result (`previewResult` for the store, `result.json` in the journal, `JSON.stringify` in a
+      // script). An enumerable getter would be read by every one of those — a transcript read nobody asked for, and
+      // `JSON.stringify` would journal `"toolCalls": {}` (a promise is not JSON), which is evidence-shaped but empty.
+      // The trade-off is that `{ ...receipt }` does not copy `toolCalls`; copying a lazy promise like that would be
+      // useless anyway. `structuredClone(receipt)` works, and yields `{ value, unitId }`.
+      enumerable: false,
+      configurable: true,
+      get() {
+        if (!toolCalls) {
+          toolCalls = sessionID ? readToolCalls(outcome, sessionID) : Promise.resolve([])
+          // A guard, not a swallow: an awaiting author still gets the rejection, but an incidental read of this
+          // property can never leave it unhandled.
+          toolCalls.catch(() => {})
+        }
+        return toolCalls
+      },
+    })
+    return receipt
+  }
+
+  const agent = ((prompt: string, opts: AgentOpts<z.ZodType> & { receipts?: boolean } = {}) => {
+    // `receipts` is engine-level only: it decides what `agent()` RESOLVES to, and never reaches the Unit's options.
+    const { receipts, ...unitOpts } = opts
+    const task = runOne(prompt, unitOpts)
+    const result = receipts ? task.then(receiptOf) : task.then((outcome) => outcome.value)
+    // Track and return the SAME promise. The author may never await it (fire-and-forget Units are supported), so the
+    // tracked promise has to be the one they hold: an unhandled rejection is marked handled here, and the drain in
+    // `runWorkflow`'s `finally` waits for exactly what ran — not a copy of it that settles a microtask later.
+    state.inflight.add(result)
+    result.finally(() => state.inflight.delete(result)).catch(() => {})
+    return result
   }) as WorkflowContext<A>["agent"]
 
   const checkItems = (count: number, what: string) => {

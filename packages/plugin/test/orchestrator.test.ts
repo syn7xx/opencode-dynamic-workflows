@@ -135,6 +135,23 @@ describe("runWorkflow", () => {
     expect(record?.result).toBe("hi")
     expect(record?.run.units[0]?.output).toBe("hi")
   })
+
+  it("a receipt returned from run() journals { value, unitId } and reads no extra transcript", async () => {
+    const { promise, runId, journal, host, store } = await start(wf(`return ctx.agent("go", { receipts: true })`), {
+      journal: true,
+      host: { reply: { tools: [{ name: "bash", input: { command: "go" }, content: "went" }], text: "went fine" } },
+    })
+    const { result } = await promise
+    await journal!.flush()
+    const record = await journal!.read(runId)
+    const unitId = (result as { unitId: string }).unitId
+    // `toolCalls` is not enumerable: the journal and the preview hold the receipt's data, not `{}` where a promise
+    // used to be, and serializing it did not read the transcript (one read: the runner's own).
+    expect(record?.result).toEqual({ value: "went fine", unitId })
+    expect(record?.result).not.toHaveProperty("toolCalls")
+    expect(store.get(runId)!.resultPreview).toBe(`{"value":"went fine","unitId":"${unitId}"}`)
+    expect(host.contexts).toHaveLength(1)
+  })
 })
 
 describe("policy resolution", () => {
