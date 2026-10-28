@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "bun:test"
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 
@@ -120,6 +120,31 @@ describe("loader", () => {
       expect(await loaded.config.run({} as never)).toBe("JOURNALED_H")
     } finally {
       await rm(project, { recursive: true, force: true })
+    }
+  })
+
+  it("bundles the given source even when sourcePath goes through a symlink", async () => {
+    // macOS `os.tmpdir()` is `/var/…` → `/private/var/…`, and Bun reports modules by their real path: a plain
+    // string comparison misses and silently bundles the file on disk. A symlink reproduces that everywhere.
+    const real = await mkdtemp(path.join(os.tmpdir(), "wf-real-"))
+    const linked = path.join(await mkdtemp(path.join(os.tmpdir(), "wf-link-")), "link")
+    try {
+      await symlink(real, linked)
+      await mkdir(path.join(real, "lib"), { recursive: true })
+      await writeFile(path.join(real, "lib", "helper.ts"), `export const v = () => "H"\n`)
+      const journaled =
+        `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"\nimport { v } from "./lib/helper"\n` +
+        `export default defineWorkflow({ meta: { name: "s", description: "d" }, async run() { return "JOURNALED_" + v() } })\n`
+      const viaSymlink = path.join(linked, "flow.ts")
+      await writeFile(
+        viaSymlink,
+        `export default { meta: { name: "s", description: "d" }, async run() { return "EDITED" } }\n`,
+      )
+      const loaded = await loadWorkflow(journaled, { cacheDir, sourcePath: viaSymlink })
+      expect(await loaded.config.run({} as never)).toBe("JOURNALED_H")
+    } finally {
+      await rm(real, { recursive: true, force: true })
+      await rm(path.dirname(linked), { recursive: true, force: true })
     }
   })
 

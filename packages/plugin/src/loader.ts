@@ -20,7 +20,7 @@
  */
 import { createHash } from "node:crypto"
 import { existsSync } from "node:fs"
-import { mkdir, rename, rm, writeFile } from "node:fs/promises"
+import { mkdir, realpath, rename, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
@@ -175,6 +175,18 @@ async function writeOnce(file: string, contents: string): Promise<void> {
 }
 
 /**
+ * A file's canonical identity: resolved, and with symlinks resolved too.
+ *
+ * `Bun.build` reports modules by their real path, so a Workflow under a symlinked directory (macOS `os.tmpdir()`
+ * is `/var/…` → `/private/var/…`, and a project may live behind any symlink) would never match the path it was
+ * given — and a miss would silently bundle the file on disk instead of the text we hold.
+ */
+async function identityOf(file: string): Promise<string> {
+  const resolved = path.resolve(file)
+  return realpath(resolved).catch(() => resolved)
+}
+
+/**
  * Bundle a Workflow into one self-contained module: its local imports are inlined, the authoring specifiers stay
  * external and are normalized to the portable specifier (see {@link portableAuthoringImports}).
  *
@@ -183,7 +195,7 @@ async function writeOnce(file: string, contents: string): Promise<void> {
  * than re-reading the file, is what makes a replay faithful after the file was edited.
  */
 async function bundleWorkflow(sourcePath: string, source: string): Promise<string> {
-  const entry = path.resolve(sourcePath)
+  const entry = await identityOf(sourcePath)
   const build = await Bun.build({
     entrypoints: [sourcePath],
     target: "bun",
@@ -194,8 +206,8 @@ async function bundleWorkflow(sourcePath: string, source: string): Promise<strin
         setup(builder) {
           // Serve the entry's text from `source`; every other module loads normally (returning nothing falls
           // through to Bun's own loader), so imports still resolve from the entry's real directory.
-          builder.onLoad({ filter: /\.ts$/ }, (args) =>
-            path.resolve(args.path) === entry ? { contents: source, loader: "ts" } : undefined,
+          builder.onLoad({ filter: /\.[cm]?tsx?$/ }, async (args) =>
+            (await identityOf(args.path)) === entry ? { contents: source, loader: "ts" } : undefined,
           )
           builder.onResolve({ filter: AUTHORING_FILTER }, () => ({
             path: AUTHORING_PATH.replaceAll("\\", "/"),
