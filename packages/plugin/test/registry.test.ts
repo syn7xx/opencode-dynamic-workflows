@@ -148,6 +148,79 @@ describe("scanWorkflowFiles (recursive glob, symlinks)", () => {
 })
 
 describe("buildRegistry (discovery → keying → precedence)", () => {
+  it("never drops a legitimate entrypoint: re-export, bare config, and a namespaced lib/ Workflow", async () => {
+    const scope = await tmp("wf-keep-")
+    try {
+      // a real `lib/…` NAMESPACE entrypoint (imports the authoring API) must still register as `lib:x`
+      await write(scope, "workflows/lib/x.ts", wf("x", "LIB_X"))
+      // the entrypoint re-exports its implementation (`export { default } from …`)
+      await write(
+        scope,
+        "workflows/impl/real.ts",
+        `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"\n` +
+          `export default defineWorkflow({ meta: { name: "reexport", description: "d" }, async run() { return "REEXPORT" } })\n`,
+      )
+      await write(scope, "workflows/reexport.ts", `export { default } from "./impl/real.ts"\n`)
+      // a hand-written config with no authoring import and no defineWorkflow call
+      await write(
+        scope,
+        "workflows/bare.ts",
+        `export default { meta: { name: "bare", description: "d" }, async run() { return "BARE" } }\n`,
+      )
+      // a plain helper (named exports only, no authoring link) stays skipped and quiet
+      await write(scope, "workflows/lib/helper.ts", `export const util = (n: number) => n + 1\n`)
+      // a schema helper: imports the authoring module for `z`, but exports named values, not a Workflow
+      await write(
+        scope,
+        "workflows/lib/schemas.ts",
+        `import { z } from "@syn7xx/opencode-dynamic-workflows/workflow"\nexport const S = z.object({ n: z.number() })\n`,
+      )
+
+      const reg = await buildRegistry({ directory: scope, dirs: [scope] })
+      const keys = Array.from(reg.entries.keys()).toSorted()
+      expect(keys).toContain("lib:x")
+      expect(keys).toContain("reexport") // keyed by its own meta.name, not the re-exported file's path
+      expect(keys).toContain("bare")
+      expect(reg.failures.some((f) => f.absPath.endsWith("helper.ts"))).toBe(false)
+      // a `z`-schema helper is neither registered nor reported — the lib/** decomposition stays quiet
+      expect(reg.failures.some((f) => f.absPath.endsWith("schemas.ts"))).toBe(false)
+      expect(keys.some((k) => k.includes("schemas"))).toBe(false)
+    } finally {
+      await rm(scope, { recursive: true, force: true })
+    }
+  })
+
+  it("keeps a re-export barrel and tokens split by a comment", async () => {
+    const scope = await tmp("wf-barrel-")
+    try {
+      // The implementation lives OUTSIDE the workflows root, so the key can only come from the barrel itself.
+      await write(
+        scope,
+        "impl/star.ts",
+        `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"\n` +
+          `export const workflow = defineWorkflow({ meta: { name: "star", description: "d" }, async run() { return "STAR" } })\n`,
+      )
+      await write(scope, "workflows/star.ts", `export * from "../impl/star.ts"\n`)
+      // `export`, a comment, `default`: three byte-tokens, two tokens to the parser
+      await write(
+        scope,
+        "workflows/commented.ts",
+        `export /* generated */ default { meta: { name: "commented", description: "d" }, async run() { return "C" } }\n`,
+      )
+      await write(
+        scope,
+        "workflows/commented-line.ts",
+        `export // generated\ndefault { meta: { name: "commented-line", description: "d" }, async run() { return "C" } }\n`,
+      )
+
+      const reg = await buildRegistry({ directory: scope, dirs: [scope] })
+      expect([...reg.entries.keys()].toSorted()).toEqual(["commented", "commented-line", "star"])
+      expect(reg.failures).toEqual([])
+    } finally {
+      await rm(scope, { recursive: true, force: true })
+    }
+  })
+
   it("keys by [...namespace, meta.name], follows a symlinked dir, and surfaces collisions + failures", async () => {
     const globalScope = await tmp("wf-global-")
     const projectScope = await tmp("wf-project-")
@@ -160,7 +233,14 @@ describe("buildRegistry (discovery → keying → precedence)", () => {
       // project scope (listed AFTER global ⇒ wins): same `dup` key + a nested namespaced workflow + a broken file
       const projectDup = await write(projectScope, "workflows/dup.ts", wf("dup", "PROJECT_DUP"))
       await write(projectScope, "workflows/deep-research/dr.ts", wf("dr"))
-      await write(projectScope, "workflows/broken.ts", `export const nope = 1`) // no default defineWorkflow → failure
+      // a genuine broken ENTRYPOINT: mentions the authoring API but has no default export → failure
+      await write(
+        projectScope,
+        "workflows/broken.ts",
+        `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"\nexport const nope = defineWorkflow\n`,
+      )
+      // a helper module under lib/: no authoring API → not an entrypoint, skipped before it is imported
+      await write(projectScope, "workflows/lib/flow/helper.ts", `export const util = (n: number) => n + 1\n`)
 
       // a symlinked DIRECTORY inside the project workflows root (followSymlinks must traverse it)
       await write(external, "ext.ts", wf("fromlink"))
@@ -188,9 +268,13 @@ describe("buildRegistry (discovery → keying → precedence)", () => {
         sameScope: false,
       })
 
-      // the malformed file is surfaced as a failure, not dropped silently, and never registered
+      // the malformed ENTRYPOINT is surfaced as a failure, not dropped silently, and never registered
       expect(reg.failures.some((f) => f.absPath.endsWith("broken.ts") && /defineWorkflow/.test(f.error))).toBe(true)
       expect(keys.some((k) => k === "broken" || k.endsWith(":broken"))).toBe(false)
+
+      // the lib/ helper is neither a failure nor an entry — it is not a Workflow at all, so it stays quiet
+      expect(reg.failures.some((f) => f.absPath.endsWith("helper.ts"))).toBe(false)
+      expect(keys.some((k) => k.includes("helper"))).toBe(false)
     } finally {
       await rm(globalScope, { recursive: true, force: true })
       await rm(projectScope, { recursive: true, force: true })

@@ -40,8 +40,13 @@ export function defaultCacheDir(): string {
   return path.join(base, "opencode-dynamic-workflows", "workflows")
 }
 
+/** Escape a literal string for a `RegExp` source. */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")
+}
+
 const SPECIFIER_PATTERN = new RegExp(
-  `(from\\s*|import\\s*\\(\\s*|import\\s+)(["'])(${AUTHORING_SPECIFIERS.map((s) => s.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")).join("|")})\\2`,
+  `(from\\s*|import\\s*\\(\\s*|import\\s+)(["'])(${AUTHORING_SPECIFIERS.map(escapeRegExp).join("|")})\\2`,
   "g",
 )
 
@@ -57,6 +62,50 @@ export function rewriteAuthoringImports(source: string, target = AUTHORING_PATH)
 
 export function hasRelativeImports(source: string): boolean {
   return /(?:from\s*|import\s*\(\s*|import\s+)["']\.\.?\//.test(source)
+}
+
+/**
+ * An "entrypoint-shaped export": every way {@link loadWorkflow} can find a config in a module — its `mod.default`
+ * (`export default …`, `export *`, an export list or re-export naming `default`, `export =`, `module.exports`) and
+ * its `mod.workflow` alias (a declaration or export list naming `workflow`).
+ *
+ * `defineWorkflow` is a signal of its own on purpose: a *broken* entrypoint — one that calls the API but does not
+ * export a config — is still imported and still reported, instead of disappearing quietly.
+ */
+const ENTRYPOINT_SIGNAL = new RegExp(
+  [
+    String.raw`\bdefineWorkflow\b`,
+    String.raw`\bexport\s+default\b`,
+    String.raw`\bexport\s*\*`,
+    String.raw`\bexport\s*\{[^}]*\b(?:default|workflow)\b`,
+    String.raw`\bexport\s*=`,
+    String.raw`\bexport\s+(?:async\s+)?(?:const|let|var|function|class)\s+workflow\b`,
+    String.raw`\bmodule\.exports\b`,
+  ].join("|"),
+)
+
+/** Blank comments, so a comment between two tokens reads as the gap the parser sees there. */
+function blankComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ")
+}
+
+/**
+ * Could this source be a durable Workflow entrypoint, judged by content and without running it?
+ *
+ * Discovery globs every `.ts` under a `workflows/` root, so helper/decomposition modules are candidates too. The
+ * filter is deliberately NON-LOSSY — it only skips a file that confidently cannot be a Workflow, so no real
+ * entrypoint is ever dropped by a folder or a filename:
+ *
+ * - an {@link ENTRYPOINT_SIGNAL} export — every shape the loader can resolve a config through;
+ * - the same, with a comment between the tokens: the parser sees two adjacent tokens where the bytes have three.
+ *   The plain test runs first, so blanking comments can only ADD keeps, never lose one.
+ *
+ * A helper that imports the authoring module only for `z` (schemas, types, constants) and exports named values
+ * has no entrypoint-shaped export, so it is skipped before it is imported and the `lib/**` decomposition stays
+ * quiet. A file that LOOKS like an entrypoint but fails to load is still imported and still reported.
+ */
+export function mayDefineWorkflow(source: string): boolean {
+  return ENTRYPOINT_SIGNAL.test(source) || ENTRYPOINT_SIGNAL.test(blankComments(source))
 }
 
 export function isWorkflowConfig(value: unknown): value is DefineWorkflowConfig {
