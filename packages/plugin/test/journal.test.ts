@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
+import { existsSync } from "node:fs"
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
@@ -89,6 +90,21 @@ describe("journal", () => {
     await writeFile(file, `${JSON.stringify({ type: "unit.updated", runId: "r1", data: unit({}) })}\n{"type":"unit.upd`)
     const record = await journal.read("r1")
     expect(record?.run.units).toHaveLength(1)
+  })
+
+  it("journals an executable snapshot next to the script, and reads it back only when present", async () => {
+    await journal.begin(baseRun("with-exec"), {
+      source: SOURCE,
+      args: null,
+      instance: "i",
+      executionSource: "// @bun\nexport default { meta: {}, run() {} }\n",
+    })
+    await journal.begin(baseRun("no-exec"), { source: SOURCE, args: null, instance: "i" })
+    await journal.flush()
+    expect((await journal.read("with-exec"))?.executionSource).toContain("// @bun")
+    expect((await journal.read("no-exec"))?.executionSource).toBeUndefined()
+    expect(existsSync(path.join(journalRoot(dir), "with-exec", "execution.ts"))).toBe(true)
+    expect(existsSync(path.join(journalRoot(dir), "no-exec", "execution.ts"))).toBe(false)
   })
 
   it("lists newest first as library entries, filtered by status", async () => {

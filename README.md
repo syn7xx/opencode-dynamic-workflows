@@ -323,6 +323,10 @@ OpenCode service dies, the Run reads back as `interrupted`. `resume` starts a ne
 and prompt: each Unit whose prompt is unchanged returns its recorded result at once, answers to `ask` are replayed, and
 from the first changed prompt on everything runs live. Units that failed run again.
 
+A Workflow composed of several files (its entry importing local modules, at any depth) journals the bundled module
+the Run actually executed alongside its source, so a resume replays that exact module even if those files were edited,
+moved or deleted in the meantime.
+
 ## How it works
 
 <p align="center">
@@ -346,7 +350,8 @@ flowchart LR
   Runs beyond `maxConcurrentRuns` wait, queued.
 - **Units** are ordinary OpenCode sessions, so they use your providers, subagents and permission rules. They are not
   linked into your conversation; the TUI and web app show them.
-- **The journal** records the Run, each Unit, the script source and the result, which is what resume replays.
+- **The journal** records the Run, each Unit, the script source, the bundled module a decomposed Workflow ran, and the
+  result, which is what resume replays.
 - **Clients** talk to the engine through one versioned protocol: the TUI over plugin RPC, the web app and scripts
   over the Gateway.
 

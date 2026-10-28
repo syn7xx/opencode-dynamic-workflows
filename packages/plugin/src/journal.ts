@@ -8,6 +8,7 @@
  *     ├── run.json      the latest Run snapshot, the args it was given, and the owning process
  *     ├── units.jsonl   one protocol event per line: Unit transitions and resolved interactions, in order
  *     ├── script.ts     the verbatim source, inline and durable alike
+ *     ├── execution.ts  the bundled module for a decomposed durable Workflow (local imports inlined)
  *     └── result.json   the consolidated result, written once when the Run settles
  *
  * Two rules hold everywhere in here:
@@ -27,6 +28,8 @@ export interface JournalRecord {
   run: Run
   /** The verbatim `script.ts`; `""` when the file is missing. */
   source: string
+  /** The bundled `execution.ts` for a decomposed durable Workflow; `undefined` for a single-file or inline Run. */
+  executionSource?: string
   args: unknown
   result?: unknown
   /** `units.jsonl`, in the order the transitions happened. */
@@ -48,7 +51,7 @@ export interface JournalListOptions {
 
 export interface Journal {
   root: string
-  begin(run: Run, input: { source: string; args: unknown; instance: string }): Promise<void>
+  begin(run: Run, input: { source: string; args: unknown; instance: string; executionSource?: string }): Promise<void>
   /** Record one transition. Only `unit.updated` and `interaction.resolved` are journaled. */
   append(event: ProtocolEvent): Promise<void>
   /** Rewrite `run.json` with the latest snapshot (status changes, cleanup bookkeeping). */
@@ -67,6 +70,7 @@ export interface JournalOptions {
 const RUN_FILE = "run.json"
 const UNITS_FILE = "units.jsonl"
 const SCRIPT_FILE = "script.ts"
+const EXECUTION_FILE = "execution.ts"
 const RESULT_FILE = "result.json"
 const RECORD_VERSION = 2
 
@@ -289,6 +293,10 @@ export function createJournal(root: string, options: JournalOptions = {}): Journ
           await mkdir(directory, { recursive: true })
           await appendFile(path.join(directory, UNITS_FILE), "", "utf8")
           await writeAtomic(path.join(directory, SCRIPT_FILE), input.source)
+          // The executable snapshot, written before `run.json` so a resume never sees a record without it.
+          if (input.executionSource !== undefined)
+            await writeAtomic(path.join(directory, EXECUTION_FILE), input.executionSource)
+          else await rm(path.join(directory, EXECUTION_FILE), { force: true }).catch(() => {})
           await writeRun(run, input.args, owner)
         },
         "begin",
@@ -344,6 +352,7 @@ export function createJournal(root: string, options: JournalOptions = {}): Journ
       if (!document) return null
       const directory = runDirectory(runId)
       const source = await readFile(path.join(directory, SCRIPT_FILE), "utf8").catch(() => "")
+      const executionSource = await readFile(path.join(directory, EXECUTION_FILE), "utf8").catch(() => "")
       const transitions = await readTransitions(runId)
       let result: unknown
       try {
@@ -354,6 +363,7 @@ export function createJournal(root: string, options: JournalOptions = {}): Journ
       return {
         run: foldTransitions(document.run, transitions),
         source,
+        ...(executionSource ? { executionSource } : {}),
         args: document.args,
         result,
         transitions,
