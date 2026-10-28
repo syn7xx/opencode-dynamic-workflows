@@ -381,8 +381,17 @@ export interface UnitReceipt<T> {
   unitId: string
   /**
    * The tool calls the Unit's session recorded. Read lazily on first access (memoized), so a Workflow that never
-   * asks costs nothing extra. `[]` when the Unit never had a session (replayed, setup failure) or ran no tools — for
-   * a replayed Unit that means *unknown*, not "did nothing": a resumed Run cannot vouch for an earlier Run's work.
+   * asks costs nothing extra. `[]` means one of two things: the Unit ran and called no tools, or there is nothing to
+   * read — a Unit with no session (a setup failure), or a replayed Unit whose original session is gone, unreadable, or
+   * absent because it failed before creating one. In those cases `[]` is *unknown*, not "did nothing".
+   *
+   * A replayed Unit (a recorded failure included, and across repeated resumes) reads the session the ORIGINAL Run
+   * recorded, so a resumed Run can vouch for work the earlier Run did — and may therefore fail an assertion that
+   * quietly passed on `[]` before. When that evidence is unavailable — no session was ever recorded, the read fails,
+   * or the transcript is unreadable — it yields `[]` plus a Run log line, never a rejection. Only a Unit that ran in
+   * THIS Run is strict: its session exists, so a read failure rejects rather than looking empty. `[]` on a replayed
+   * Unit is not proof of innocence either — a check that must never be skipped belongs on a Run that actually ran the
+   * Unit.
    *
    * Not enumerable: `JSON.stringify(receipt)` is `{ value, unitId }` and reads nothing. `{ ...receipt }` therefore
    * loses this property — copy it deliberately (`{ ...receipt, toolCalls: await receipt.toolCalls }`) or await it.

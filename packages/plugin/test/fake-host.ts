@@ -73,6 +73,11 @@ export interface FakeHostOptions {
   worktree?: { changed?: boolean; active?: boolean }
   /** Steps (model requests) each prompt takes — drives the step guard via the index. */
   stepsPerPrompt?: number
+  /**
+   * Sessions that already exist before the Run — a previous Run's Unit session, whose evidence a replayed Unit's
+   * receipt should still be able to read (or fail to, when it is absent).
+   */
+  seedSessions?: Array<{ id: string; messages?: HostMessage[] }>
   /** Extraction reply for `generateText`; absent ⇒ no extraction support. */
   generate?: (prompt: string) => string | Promise<string>
 }
@@ -115,6 +120,19 @@ export function createFakeHost(index: UnitIndex, options: FakeHostOptions = {}):
   let counter = 0
   let promptIndex = 0
   const model = options.model ?? { providerID: "fake", id: "model-1" }
+
+  // A previous Run's Unit session: present but never created by this Run, so a replayed Unit's receipt can read its
+  // evidence. Nothing reads `create` for it (this Run never created it), so a synthetic one keeps the shape honest.
+  for (const seeded of options.seedSessions ?? []) {
+    sessions.set(seeded.id, {
+      info: { id: seeded.id, location: { directory: "/fake" } },
+      create: { title: seeded.id, metadata: {}, permissions: [] },
+      messages: seeded.messages ?? [],
+      running: null,
+      interrupt: null,
+      turns: 0,
+    })
+  }
 
   const pick = (call: PromptCall): FakeReply => {
     if (options.replies && options.replies.length > 0) {
@@ -294,7 +312,9 @@ export function createFakeHost(index: UnitIndex, options: FakeHostOptions = {}):
           (options.contextErrorFrom === undefined || contexts.length >= options.contextErrorFrom)
         )
           throw new Error(options.contextError)
-        return structuredClone(sessions.get(input.sessionID)?.messages ?? [])
+        const session = sessions.get(input.sessionID)
+        if (!session) throw new Error(`Session not found: ${input.sessionID}`)
+        return structuredClone(session.messages)
       },
       async interrupt(input) {
         interrupts.push(input.sessionID)

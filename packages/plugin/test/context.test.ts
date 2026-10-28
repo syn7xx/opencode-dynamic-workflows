@@ -4,7 +4,8 @@
  */
 import { describe, expect, test } from "bun:test"
 
-import type { ReplayPlan } from "../src/context"
+import type { ReplayPlan, ReplayUnit } from "../src/context"
+import type { HostMessage } from "../src/host"
 import type { Unit } from "../src/protocol"
 import { z } from "../src/workflow"
 import { makeCtx } from "./helpers"
@@ -493,6 +494,34 @@ describe("worktree isolation", () => {
 })
 
 describe("agent receipts — what a Unit's session actually did", () => {
+  /** A replay plan with ONE Unit at ordinal 1 — the shape `resumeRun` hands the engine. */
+  const oneReplayed = (unit: Partial<ReplayUnit> = {}, plan: Partial<ReplayPlan> = {}): ReplayPlan => ({
+    units: new Map([
+      [1, { prompt: "first", status: "succeeded", output: "one", schema: false, subagent: "general", ...unit }],
+    ]),
+    answers: [],
+    rerunFailed: true,
+    diverged: false,
+    ...plan,
+  })
+
+  /** The transcript a previous Run's session left behind: one completed `bash` call. */
+  const recordedCall = (id: string): { id: string; messages: HostMessage[] } => ({
+    id,
+    messages: [
+      {
+        type: "assistant",
+        content: [
+          {
+            type: "tool",
+            name: "bash",
+            state: { status: "completed", input: { command: "bun run migrate" }, content: "migrated 3 sites" },
+          },
+        ],
+      },
+    ],
+  })
+
   test("resolves to { value, unitId, toolCalls } and reports each call the session recorded", async () => {
     const units: Unit[] = []
     const { ctx, host } = makeCtx(
@@ -610,21 +639,181 @@ describe("agent receipts — what a Unit's session actually did", () => {
     expect(calls.map((call) => call.successful)).toEqual([true, true])
   })
 
-  test("a replayed Unit has no session, so it reports no calls and reads nothing", async () => {
-    const replay: ReplayPlan = {
-      units: new Map([
-        [1, { prompt: "first", status: "succeeded", output: "one", schema: false, subagent: "general" }],
-      ]),
-      answers: [],
-      rerunFailed: true,
-      diverged: false,
-    }
-    const { ctx, host } = makeCtx({}, { replay })
+  test("a replayed Unit reads the tool calls the ORIGINAL Run's session recorded", async () => {
+    const { ctx, host } = makeCtx(
+      { seedSessions: [recordedCall("ses_fake_old")] },
+      { replay: oneReplayed({ sessionID: "ses_fake_old" }) },
+    )
+    const receipt = await ctx.agent("first", { label: "from the journal", receipts: true })
+    expect(receipt.value).toBe("one")
+    // The Unit itself did NOT run here, so the Run creates no session for it.
+    expect(host.prompts).toHaveLength(0)
+    expect(host.creates).toHaveLength(0)
+    // …but its receipt reads the earlier session's evidence.
+    const calls = await receipt.toolCalls
+    expect(host.contexts).toEqual(["ses_fake_old"])
+    expect(calls.map((call) => call.name)).toEqual(["bash"])
+    expect(calls[0]!.output).toBe("migrated 3 sites")
+    expect(calls[0]!.successful).toBe(true)
+  })
+
+  test("a replayed FAILED Unit still reports the evidence its session recorded", async () => {
+    // `resumeRun(runId, /* rerunFailed */ false)` replays a failure instead of re-running it. That Unit did not run
+    // here either, so a receipt must read the original session exactly like a replayed success — with `value: null`,
+    // because the failure is the recorded truth.
+    const { ctx, host } = makeCtx(
+      { seedSessions: [recordedCall("ses_fake_failed")] },
+      {
+        replay: oneReplayed(
+          { prompt: "third", status: "failed", output: undefined, sessionID: "ses_fake_failed" },
+          { rerunFailed: false },
+        ),
+      },
+    )
+    const receipt = await ctx.agent("third", { label: "from the journal", receipts: true })
+    expect(receipt.value).toBeNull()
+    expect(host.prompts).toHaveLength(0)
+    const calls = await receipt.toolCalls
+    expect(calls.map((call) => call.name)).toEqual(["bash"])
+  })
+
+  test("a replayed Unit's receipt does not run the Unit: no prompt, and the Unit stays sessionID: null", async () => {
+    const units: Unit[] = []
+    const logs: string[] = []
+    const { ctx, host } = makeCtx(
+      {},
+      {
+        replay: oneReplayed(),
+        events: { onUnit: (u) => units.push(u), onLog: (message) => logs.push(message) },
+      },
+    )
     const receipt = await ctx.agent("first", { label: "from the journal", receipts: true })
     expect(receipt.value).toBe("one")
     expect(host.prompts).toHaveLength(0)
+    expect(units.at(-1)!.status).toBe("replayed")
+    expect(units.at(-1)!.sessionID).toBeNull()
+    // No recorded session: nothing to read, and [] without a host call — but still reported as unknown, not "none".
     expect(await receipt.toolCalls).toEqual([])
     expect(host.contexts).toEqual([])
+    expect(logs).toHaveLength(1)
+    expect(logs[0]).toContain("no session is recorded for it")
+  })
+
+  test("the unknown notice is replay-only: a LIVE Unit with no evidence logs nothing", async () => {
+    // A live setup failure has no session either, and its `[]` means "it never ran" — already visible through `value`
+    // and `errors`. Only a replay needs the notice, because only there does `[]` hide a real earlier Run.
+    const logs: string[] = []
+    const live = makeCtx({ createError: "no session for you" }, { events: { onLog: (message) => logs.push(message) } })
+    const receipt = await live.ctx.agent("nope", { label: "broken", receipts: true })
+    expect(receipt.value).toBeNull()
+    await expect(receipt.toolCalls).resolves.toEqual([])
+    expect(logs).toEqual([])
+    // …and a live READ failure still throws rather than logging an unknown.
+    const failed: string[] = []
+    const read = makeCtx({ reply: { text: "done" } }, { events: { onLog: (message) => failed.push(message) } })
+    const second = await read.ctx.agent("talk", { receipts: true })
+    read.host.session.context = async () => {
+      throw new Error("socket closed")
+    }
+    await expect(second.toolCalls).rejects.toThrow("agent({ receipts }): reading the session")
+    expect(failed).toEqual([])
+  })
+
+  test("a throwing host logger cannot turn a replayed receipt's [] into a rejection", async () => {
+    // The notice is the only external call on the "never rejects" path, so it must not be able to break that promise.
+    const { ctx } = makeCtx(
+      {},
+      {
+        replay: oneReplayed({ sessionID: "ses_deleted" }),
+        events: {
+          onLog: () => {
+            throw new Error("the TUI blew up")
+          },
+        },
+      },
+    )
+    const receipt = await ctx.agent("first", { receipts: true })
+    await expect(receipt.toolCalls).resolves.toEqual([])
+  })
+
+  test("a replayed Unit left without receipts never touches the host -- no read for a value nobody asserts on", async () => {
+    const { ctx, host } = makeCtx(
+      { seedSessions: [recordedCall("ses_fake_old")] },
+      { replay: oneReplayed({ sessionID: "ses_fake_old" }) },
+    )
+    expect(await ctx.agent("first")).toBe("one")
+    expect(host.contexts).toEqual([])
+  })
+
+  test("a replayed receipt is lazy and memoized: one read, only once toolCalls is awaited", async () => {
+    const { ctx, host } = makeCtx(
+      { seedSessions: [recordedCall("ses_fake_old")] },
+      { replay: oneReplayed({ sessionID: "ses_fake_old" }) },
+    )
+    const receipt = await ctx.agent("first", { receipts: true })
+    expect(host.contexts).toEqual([]) // resolving the receipt read nothing
+    const [first, second] = await Promise.all([receipt.toolCalls, receipt.toolCalls])
+    expect(first).toBe(second) // the same promise, not two reads
+    expect(host.contexts).toEqual(["ses_fake_old"])
+  })
+
+  test("a replayed Unit's unreadable session reports [] (unknown) -- gone and broken alike, never a failure", async () => {
+    // Backward compatibility: before receipts could read a replayed Unit's session at all, `toolCalls` was `[]` and
+    // never rejected. Any failure — the session is gone (unknown id) or the host is broken (a transport error) — must
+    // keep that promise, so a resumed Workflow that passed before cannot start failing now.
+    for (const hostOptions of [{}, { contextError: "socket closed" }]) {
+      const logs: string[] = []
+      const { ctx, host, state } = makeCtx(hostOptions, {
+        replay: oneReplayed({ sessionID: "ses_deleted" }),
+        events: { onLog: (message) => logs.push(message) },
+      })
+      const receipt = await ctx.agent("first", { label: "from the journal", receipts: true })
+      await expect(receipt.toolCalls).resolves.toEqual([])
+      // Exactly one host call: the read. No existence check, no retry — the replayed path is best-effort.
+      expect(host.contexts).toEqual(["ses_deleted"])
+      // A read failure on the replayed path is not a Run failure either …
+      expect(state.errors).toEqual([])
+      // … but it is never silent: an unknown ≠ "called no tools", and the Run log says so.
+      expect(logs).toHaveLength(1)
+      expect(logs[0]).toContain("replayed Unit from the journal")
+      expect(logs[0]).toContain("tool calls are unknown")
+    }
+  })
+
+  test("a replayed Unit whose transcript comes back malformed reports [] instead of rejecting", async () => {
+    const logs: string[] = []
+    const { ctx, host } = makeCtx(
+      {},
+      {
+        replay: oneReplayed({ sessionID: "ses_fake_old" }),
+        events: { onLog: (message) => logs.push(message) },
+      },
+    )
+    // A host that resolves a transcript of the wrong shape: the type forbids it, a misbehaving server can still do it.
+    host.session.context = async () => null as never
+    const receipt = await ctx.agent("first", { label: "from the journal", receipts: true })
+    await expect(receipt.toolCalls).resolves.toEqual([])
+    expect(logs[0]).toContain("transcript the engine cannot read")
+  })
+
+  test("a replayed Unit with a READABLE session logs nothing", async () => {
+    const logs: string[] = []
+    const { ctx } = makeCtx(
+      { seedSessions: [recordedCall("ses_fake_old")] },
+      { replay: oneReplayed({ sessionID: "ses_fake_old" }), events: { onLog: (message) => logs.push(message) } },
+    )
+    const receipt = await ctx.agent("first", { receipts: true })
+    expect(await receipt.toolCalls).toEqual([expect.objectContaining({ name: "bash" })])
+    expect(logs).toEqual([])
+  })
+
+  test("a LIVE Unit whose transcript comes back malformed still throws", async () => {
+    // The live path keeps its pre-existing behaviour: a session that exists must be readable, and a host violating
+    // its own contract is a real error, not silently "no calls".
+    const { ctx, host } = makeCtx({ reply: { text: "done" } })
+    const receipt = await ctx.agent("talk", { receipts: true })
+    host.session.context = async () => null as never
+    await expect(receipt.toolCalls).rejects.toBeInstanceOf(TypeError)
   })
 
   test("a Unit that ran no tools reports []", async () => {
