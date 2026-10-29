@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1](https://github.com/syn7xx/opencode-dynamic-workflows/compare/v0.4.0...v0.4.1) (2026-10-29)
+
+
+### Bug fixes
+
+* **web:** multiplex Gateway events onto one stream ([f06af9a](https://github.com/syn7xx/opencode-dynamic-workflows/commit/f06af9abcf0489817e07614300662d73903e4c30))
+* **web:** stop the Gateway connection from hanging, and multiplex events ([d685634](https://github.com/syn7xx/opencode-dynamic-workflows/commit/d68563420dd756066a827a104940ebed3781c329))
+
 ## [0.4.0](https://github.com/syn7xx/opencode-dynamic-workflows/compare/v0.3.0...v0.4.0) (2026-10-29)
 
 
