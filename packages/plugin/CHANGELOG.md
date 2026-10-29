@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/syn7xx/opencode-dynamic-workflows/compare/v0.3.0...v0.4.0) (2026-10-29)
+
+
+### Features
+
+* **workflow:** read a replayed Unit's tool calls from its original session ([d910a2c](https://github.com/syn7xx/opencode-dynamic-workflows/commit/d910a2c7f6a985ab66b36af795b6f04d57f9a357))
+* **workflow:** read a replayed Unit's tool calls from its original session ([4565a1c](https://github.com/syn7xx/opencode-dynamic-workflows/commit/4565a1c66c18af03526a0319d0c45e6a01bf92d2)), closes [#15](https://github.com/syn7xx/opencode-dynamic-workflows/issues/15)
+
+
+### Bug fixes
+
+* **journal:** read a process's start time under a non-English locale ([5b688c1](https://github.com/syn7xx/opencode-dynamic-workflows/commit/5b688c1e5ad2db48899248a8c6bfbec647d7e48f))
+
 ## [0.3.0](https://github.com/syn7xx/opencode-dynamic-workflows/compare/v0.2.2...v0.3.0) (2026-10-28)
 
 
