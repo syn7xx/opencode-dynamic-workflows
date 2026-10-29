@@ -86,8 +86,8 @@
     "/v1/events": {
       "get": {
         "operationId": "events",
-        "summary": "The event stream of one location (Server-Sent Events)",
-        "description": "Each SSE message has `id: <epoch>.<seq>`, `event: <type>` and `data: <ProtocolEvent>` (JSON).\nReconnect with the `Last-Event-ID` header (or `?after=<epoch>.<seq>`) to receive what was missed; when the\ngap cannot be filled (the service restarted, or the buffer moved on) a `resync.required` event arrives:\nre-read `GET /v1/runs` and the Runs you show.\n\nAn open stream also marks the location as **attached**: while one is open, questions and inline-Workflow\napprovals wait for an answer instead of being refused or taking their fallback.",
+        "summary": "The event stream of one location, or of every location multiplexed (Server-Sent Events)",
+        "description": "Each SSE message has `id: <epoch>.<seq>`, `event: <type>` and `data: <ProtocolEvent>` (JSON); every\nevent carries its `location`, so one stream can serve several.\n\nWith `?location`, the stream is that one location and can be resumed with the `Last-Event-ID` header (or\n`?after=<epoch>.<seq>`). Without `?location`, a process serving several locations multiplexes them onto\none connection (the browser's per-origin connection pool is small, so a stream apiece starves ordinary\nrequests); that stream cannot take a per-location cursor, so a reconnect re-reads snapshots.\nWhen the gap cannot be filled (the service restarted, or the buffer moved on) a `resync.required` event\narrives: re-read `GET /v1/runs` and the Runs you show.\n\nAn open stream also marks each location it covers as **attached**: while one is open, questions and\ninline-Workflow approvals wait for an answer instead of being refused or taking their fallback.",
         "security": [
           {
             "bearer": []

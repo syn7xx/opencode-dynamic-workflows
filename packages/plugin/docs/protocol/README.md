@@ -110,8 +110,12 @@ Every event is a [`ProtocolEvent`](./schemas/ProtocolEvent.json):
 
 `seq` is per location and increases by one per event. `revision` is per Run.
 
-On the Gateway, `GET /v1/events?location=<dir>` is a Server-Sent Events stream: `id:` is the `seq`, `event:`
-is the `type`, `data:` is the whole event. Reconnect with `Last-Event-ID` to receive what you missed.
+On the Gateway, `GET /v1/events` (with or without `?location=<dir>`) is a Server-Sent Events stream: `id:` is
+the `seq`, `event:` is the `type`, `data:` is the whole event. Without `?location`, a process serving several
+locations multiplexes them onto one stream (the browser's per-origin connection pool is small, so a stream apiece
+starves ordinary requests) — every event carries its own `location`, and the client keeps a per-location `seq`
+watch by that field. With `?location`, reconnect with `Last-Event-ID` to receive what you missed; the multiplexed
+form has no per-location cursor, so a reconnect re-reads snapshots.
 
 ### The client rule
 

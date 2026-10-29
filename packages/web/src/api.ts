@@ -112,7 +112,7 @@ export interface Api {
   cancel(runId: string, interactionId: string): Promise<void>
   pair(code: string, name: string): Promise<void>
   pairLocal(): Promise<void>
-  eventsUrl(location: string): string
+  eventsUrl(): string
 }
 
 export interface ApiOptions {
@@ -282,6 +282,6 @@ export function createApi(options: ApiOptions = {}): Api {
       tokens.set(token)
     },
     pairLocal,
-    eventsUrl: (location) => `${base}/v1/events?location=${enc(location)}`,
+    eventsUrl: () => `${base}/v1/events`,
   }
 }

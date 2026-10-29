@@ -171,6 +171,7 @@ export function connectSse(options: SseOptions): SseConnection {
     while (!controller.signal.aborted) {
       options.onStatus?.(failures === 0 ? "connecting" : "retrying")
       let delay = parser.retry ?? base
+      let terminal = false
       // Abort only the ESTABLISHMENT of this attempt: a host that accepts the socket but never answers must not leave
       // the stream "connecting" forever. Combined with the outer signal (via AbortSignal.any) so that closing the
       // connection also aborts the open body; the timer is cleared once headers arrive, so a live stream is untouched.
@@ -202,6 +203,9 @@ export function connectSse(options: SseOptions): SseConnection {
             failures += 1
             options.onStatus?.("retrying", `HTTP ${response.status}`)
             delay = Math.min(max, delay * 2 ** Math.min(failures - 1, 4))
+            // A missing route (an older Gateway, a location that no longer exists) never becomes available by
+            // retrying: stop instead of reconnecting forever and holding a connection the whole time.
+            terminal = response.status === 404
           } else {
             options.onStatus?.("open")
             failures = 0
@@ -225,7 +229,7 @@ export function connectSse(options: SseOptions): SseConnection {
           await drain(response)
         }
       }
-      if (controller.signal.aborted) break
+      if (controller.signal.aborted || terminal) break
       options.onStatus?.("retrying")
       await sleep(delay, controller.signal)
     }

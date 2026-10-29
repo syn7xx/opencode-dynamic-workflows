@@ -167,6 +167,27 @@ describe("connectSse", () => {
     expect(signals.every((signal) => signal !== undefined && signal !== null)).toBe(true)
   })
 
+  test("a 404 ends the stream instead of retrying forever", async () => {
+    let calls = 0
+    let closed = 0
+    const connection = connectSse({
+      url: "/v1/events",
+      fetch: (async () => {
+        calls += 1
+        return new Response("{}", { status: 404 })
+      }) as unknown as typeof fetch,
+      sleep: async () => {},
+      onMessage: () => {},
+      onStatus: (status) => {
+        if (status === "closed") closed += 1
+      },
+    })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(calls).toBe(1)
+    expect(closed).toBe(1)
+    connection.close()
+  })
+
   test("a non-ok response body is drained, so retries do not leak connections", async () => {
     let cancelled = 0
     let calls = 0

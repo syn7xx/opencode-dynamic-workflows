@@ -134,15 +134,20 @@ const PATHS: Json = {
   "/v1/events": {
     get: {
       operationId: "events",
-      summary: "The event stream of one location (Server-Sent Events)",
+      summary: "The event stream of one location, or of every location multiplexed (Server-Sent Events)",
       description: [
-        "Each SSE message has `id: <epoch>.<seq>`, `event: <type>` and `data: <ProtocolEvent>` (JSON).",
-        "Reconnect with the `Last-Event-ID` header (or `?after=<epoch>.<seq>`) to receive what was missed; when the",
-        "gap cannot be filled (the service restarted, or the buffer moved on) a `resync.required` event arrives:",
-        "re-read `GET /v1/runs` and the Runs you show.",
+        "Each SSE message has `id: <epoch>.<seq>`, `event: <type>` and `data: <ProtocolEvent>` (JSON); every",
+        "event carries its `location`, so one stream can serve several.",
         "",
-        "An open stream also marks the location as **attached**: while one is open, questions and inline-Workflow",
-        "approvals wait for an answer instead of being refused or taking their fallback.",
+        "With `?location`, the stream is that one location and can be resumed with the `Last-Event-ID` header (or",
+        "`?after=<epoch>.<seq>`). Without `?location`, a process serving several locations multiplexes them onto",
+        "one connection (the browser's per-origin connection pool is small, so a stream apiece starves ordinary",
+        "requests); that stream cannot take a per-location cursor, so a reconnect re-reads snapshots.",
+        "When the gap cannot be filled (the service restarted, or the buffer moved on) a `resync.required` event",
+        "arrives: re-read `GET /v1/runs` and the Runs you show.",
+        "",
+        "An open stream also marks each location it covers as **attached**: while one is open, questions and",
+        "inline-Workflow approvals wait for an answer instead of being refused or taking their fallback.",
       ].join("\n"),
       security: READ,
       parameters: [

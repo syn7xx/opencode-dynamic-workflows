@@ -119,9 +119,9 @@ describe("api", () => {
     expect(caught.message).toBe("Run is still running")
   })
 
-  test("the events URL carries only the location", () => {
+  test("the events URL is the one multiplexed stream (no location)", () => {
     const api = createApi({ fetch: fakeFetch(() => json({})).fn, tokens: memoryTokens("wfg_secret") })
-    expect(api.eventsUrl("/a b")).toBe("/v1/events?location=%2Fa%20b")
+    expect(api.eventsUrl()).toBe("/v1/events")
     expect(api.authHeaders()).toEqual({ authorization: "Bearer wfg_secret" })
   })
 
