@@ -124,4 +124,29 @@ describe("api", () => {
     expect(api.eventsUrl("/a b")).toBe("/v1/events?location=%2Fa%20b")
     expect(api.authHeaders()).toEqual({ authorization: "Bearer wfg_secret" })
   })
+
+  test("every request carries an abort signal with a timeout", async () => {
+    const signals: (AbortSignal | null | undefined)[] = []
+    const capturing = (async (_url: string, init: RequestInit = {}) => {
+      signals.push(init.signal)
+      return json({ runs: [] })
+    }) as unknown as typeof fetch
+    await createApi({ fetch: capturing, tokens: memoryTokens(), timeoutMs: 5 }).listRuns()
+    expect(signals).toHaveLength(1)
+    expect(signals[0]).toBeInstanceOf(AbortSignal)
+  })
+
+  test("a request that times out becomes a retryable network error, not a hang", async () => {
+    const never = (async (_url: string, init: RequestInit = {}) =>
+      new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener("abort", () => reject(new DOMException("timed out", "TimeoutError")))
+      })) as unknown as typeof fetch
+    const caught = (await createApi({ fetch: never, tokens: memoryTokens(), timeoutMs: 5 })
+      .info()
+      .catch((e) => e)) as ApiError
+    expect(caught).toBeInstanceOf(ApiError)
+    expect(caught.code).toBe("network")
+    expect(caught.retryable).toBe(true)
+    expect(caught.message).toContain("did not answer")
+  })
 })

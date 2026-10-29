@@ -119,6 +119,8 @@ export interface ApiOptions {
   base?: string
   fetch?: typeof fetch
   tokens?: TokenStorage
+  /** Per-request timeout (ms). A hung request must fail, not freeze the UI on "Connecting…" forever. */
+  timeoutMs?: number
 }
 
 const enc = encodeURIComponent
@@ -127,6 +129,7 @@ export function createApi(options: ApiOptions = {}): Api {
   const base = options.base ?? ""
   const doFetch = options.fetch ?? globalThis.fetch.bind(globalThis)
   const tokens = options.tokens ?? localTokenStorage()
+  const timeoutMs = options.timeoutMs ?? 15_000
 
   const authHeaders = (): Record<string, string> => {
     const token = tokens.get()
@@ -142,12 +145,16 @@ export function createApi(options: ApiOptions = {}): Api {
         headers,
         ...(method === "POST" ? { body: JSON.stringify(body ?? {}) } : {}),
         cache: "no-store",
+        signal: AbortSignal.timeout(timeoutMs),
       })
     } catch (error) {
+      const timedOut = error instanceof DOMException && error.name === "TimeoutError"
       throw new ApiError(
         0,
         "network",
-        `The Gateway is unreachable (${error instanceof Error ? error.message : String(error)}).`,
+        timedOut
+          ? `The Gateway did not answer within ${Math.round(timeoutMs / 1000)}s.`
+          : `The Gateway is unreachable (${error instanceof Error ? error.message : String(error)}).`,
         true,
       )
     }

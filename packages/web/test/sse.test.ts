@@ -129,4 +129,66 @@ describe("connectSse", () => {
     connection.close()
     expect(unauthorized).toBeGreaterThanOrEqual(2)
   })
+
+  test("abandons a connection that never answers and retries, instead of hanging in connecting", async () => {
+    // A host that accepts the socket but never sends headers used to leave the stream "connecting" forever. The
+    // connect timeout aborts that attempt, and the loop retries — a later attempt that answers opens the stream.
+    const statuses: SseStatus[] = []
+    const signals: (AbortSignal | null | undefined)[] = []
+    let calls = 0
+    let resolveOpen!: () => void
+    const opened = new Promise<void>((resolve) => (resolveOpen = resolve))
+    const connection = connectSse({
+      url: "/v1/events",
+      connectTimeoutMs: 20,
+      sleep: async () => {},
+      fetch: (async (_url: string, init: RequestInit) => {
+        calls += 1
+        signals.push(init.signal)
+        if (calls === 1) {
+          // Never resolves on its own: only the connect timeout's abort can end it.
+          return new Promise<Response>((_resolve, reject) => {
+            init.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")))
+          })
+        }
+        return new Response(streamOf(["id: 1\ndata: a\n\n"]), { headers: { "content-type": "text/event-stream" } })
+      }) as unknown as typeof fetch,
+      onMessage: () => {},
+      onStatus: (status) => {
+        statuses.push(status)
+        if (status === "open") resolveOpen()
+      },
+    })
+    await opened
+    connection.close()
+    expect(calls).toBeGreaterThanOrEqual(2)
+    expect(statuses).toContain("retrying")
+    // Every attempt carries an abort signal, so a connect can actually be abandoned.
+    expect(signals.every((signal) => signal !== undefined && signal !== null)).toBe(true)
+  })
+
+  test("a non-ok response body is drained, so retries do not leak connections", async () => {
+    let cancelled = 0
+    let calls = 0
+    let resolveDone!: () => void
+    const done = new Promise<void>((resolve) => (resolveDone = resolve))
+    const connection = connectSse({
+      url: "/v1/events",
+      fetch: (async () => {
+        calls += 1
+        if (calls >= 3) resolveDone()
+        const body = new ReadableStream<Uint8Array>({
+          cancel() {
+            cancelled += 1
+          },
+        })
+        return new Response(body, { status: 503 })
+      }) as unknown as typeof fetch,
+      sleep: async () => {},
+      onMessage: () => {},
+    })
+    await done
+    connection.close()
+    expect(cancelled).toBeGreaterThanOrEqual(2)
+  })
 })

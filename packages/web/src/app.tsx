@@ -77,15 +77,29 @@ export function App() {
   createEffect(on(tokenRevision, () => void (info() && reloadInfo().catch(() => {})), { defer: true }))
 
   const boot = async () => {
-    try {
-      const loaded = await api.info()
-      setInfo(loaded)
-      setNeedsPairing(false)
-      setBootError(null)
-      for (const { location } of loaded.locations) hub.ensure(location)
-    } catch (error) {
-      if (error instanceof ApiError && error.code === "unauthorized") setNeedsPairing(true)
-      else setBootError(error)
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const loaded = await api.info()
+        setInfo(loaded)
+        setNeedsPairing(false)
+        setBootError(null)
+        for (const { location } of loaded.locations) hub.ensure(location)
+        return
+      } catch (error) {
+        if (error instanceof ApiError && error.code === "unauthorized") {
+          setInfo(null)
+          setNeedsPairing(true)
+          return
+        }
+        // A network/5xx failure: retry with a small backoff, so the page recovers on its own after a service restart or
+        // a briefly unavailable loopback port, instead of parking on an error (or on "Connecting…") until a reload.
+        // Only the last attempt surfaces the error, with the manual Retry button.
+        if (attempt >= 5) {
+          if (!info()) setBootError(error)
+          return
+        }
+        await new Promise((resolve) => setTimeout(resolve, Math.min(500 * 2 ** attempt, 8_000)))
+      }
     }
   }
 

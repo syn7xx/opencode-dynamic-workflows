@@ -2,6 +2,7 @@
 import type { Unit } from "@syn7xx/opencode-dynamic-workflows/protocol"
 import { createEffect, createSignal, on, onCleanup, type Accessor } from "solid-js"
 
+import { ApiError } from "./api"
 import type { AppContext } from "./context"
 import { beginResync, emptyRunView, receiveEvent, receiveSnapshot, withFullUnit, type RunView } from "./state"
 
@@ -21,16 +22,27 @@ export function createRunData(app: AppContext, runId: Accessor<string>): RunData
     const id = runId()
     const mine = ++generation
     setView((current) => (current.runId === id ? beginResync(current) : emptyRunView(id)))
-    try {
-      const snapshot = await app.api.getRun(id)
-      const activity = await app.api.getActivity(id).catch(() => [])
-      if (mine !== generation) return
-      setError(null)
-      app.hub.ensure(snapshot.run.location)
-      setView((current) => receiveSnapshot(current, snapshot, activity))
-    } catch (caught) {
-      if (mine !== generation) return
-      setError(caught)
+    // Retry a network/5xx failure a few times: a Run page opened while the Gateway is briefly down (a service restart)
+    // must load on its own rather than sit on "Loading Run…" until a reload.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const snapshot = await app.api.getRun(id)
+        const activity = await app.api.getActivity(id).catch(() => [])
+        if (mine !== generation) return
+        setError(null)
+        app.hub.ensure(snapshot.run.location)
+        setView((current) => receiveSnapshot(current, snapshot, activity))
+        return
+      } catch (caught) {
+        if (mine !== generation) return
+        const retryable = caught instanceof ApiError && caught.retryable
+        if (!retryable || attempt >= 4) {
+          setError(caught)
+          return
+        }
+        await new Promise((resolve) => setTimeout(resolve, Math.min(500 * 2 ** attempt, 8_000)))
+        if (mine !== generation) return
+      }
     }
   }
 
