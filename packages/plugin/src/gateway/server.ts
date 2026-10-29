@@ -149,6 +149,18 @@ export async function startGateway(config: GatewayConfig, options: GatewayOption
   const services = new Map<string, WorkflowService>()
   const subscribers = new Map<string, number>()
   const writes = new Map<string, { windowStart: number; count: number }>()
+  /**
+   * The current registration token per location. `register` returns a cleanup that only acts while its token is
+   * still the current one: a plugin reload reuses the SAME `WorkflowService` object (`ensureService` returns the
+   * existing slot), so an identity check on the service cannot tell a leaked older instance's late cleanup from
+   * the live one — a token can. Without it, that late cleanup would drop a location a still-open stream is serving.
+   */
+  const registrations = new Map<string, object>()
+  /**
+   * Aggregate event streams (`GET /v1/events` without a `location`): told when a service registers or leaves so
+   * an already-open stream follows locations that appear or disappear, instead of needing a reconnect.
+   */
+  const serviceWatchers = new Set<(kind: "add" | "remove", service: WorkflowService) => void>()
 
   let server: ReturnType<typeof Bun.serve> | undefined
   let lastError: unknown
@@ -270,27 +282,84 @@ export async function startGateway(config: GatewayConfig, options: GatewayOption
     })
   }
 
-  /** SSE ids are `<epoch>.<seq>`; a bare number (older clients, `?after=`) is a seq of an unknown epoch. */
+  /**
+   * SSE ids are `<epoch>.<seq>`; a bare number (older clients, `?after=`) is a seq of an unknown epoch.
+   *
+   * One stream over MANY locations (no `?location`): the browser keeps a small per-origin connection pool, so a
+   * stream per location exhausts it once a few projects are open and every ordinary request then queues forever.
+   * The events already carry their `location`, so every location is multiplexed onto one connection here; an open
+   * stream still marks each location **attached**, and locations that appear or leave while it is open are followed
+   * live (see `serviceWatchers`). A single-location stream (`?location`) keeps its `Last-Event-ID` replay; the
+   * multiplexed one has no per-location cursor (one header cannot carry several), so a reconnect re-reads snapshots,
+   * which the client does on every reconnect anyway.
+   */
   function events(
     request: Request,
-    service: WorkflowService,
+    targets: WorkflowService[],
     lastEventId: { seq: number; epoch?: string } | null,
+    watch: boolean,
   ): Response {
-    const location = service.location
-    let unsubscribe = () => {}
-    let heartbeat: ReturnType<typeof setInterval> | undefined
     const encoder = new TextEncoder()
+    let heartbeat: ReturnType<typeof setInterval> | undefined
+    const subscriptions = new Map<string, () => void>()
+    const bump = (location: string, delta: number) =>
+      subscribers.set(location, Math.max(0, (subscribers.get(location) ?? 0) + delta))
+
+    let send: (event: ProtocolEvent) => void = () => {}
+    let subscribe: (service: WorkflowService) => void = () => {}
+    /** Drop a location's subscription and its `attached` count, whoever decides it goes (a remove, or a dead stream). */
+    const unwatch = (location: string) => {
+      const off = subscriptions.get(location)
+      if (!off) return
+      subscriptions.delete(location)
+      off()
+    }
+    const watcher = (kind: "add" | "remove", service: WorkflowService) => {
+      if (kind === "add") subscribe(service)
+      else unwatch(service.location)
+    }
+    const teardown = () => {
+      for (const unsubscribe of subscriptions.values()) unsubscribe()
+      subscriptions.clear()
+      if (heartbeat) clearInterval(heartbeat)
+      heartbeat = undefined
+    }
+
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
-        subscribers.set(location, (subscribers.get(location) ?? 0) + 1)
-        const send = (event: ProtocolEvent) =>
+        send = (event: ProtocolEvent) => {
+          // `id:` is the event's own location epoch/seq. Meaningful as a cursor only for a single-location stream;
+          // in the multiplex it is informational (the client keys off `event.location`/`event.seq`, not this header).
           controller.enqueue(
             encoder.encode(
               `id: ${event.epoch ?? ""}.${event.seq}\nevent: ${event.type}\ndata: ${JSON.stringify(elideEvent(event))}\n\n`,
             ),
           )
+        }
+        subscribe = (service: WorkflowService) => {
+          // A different service object for a location already covered is not re-subscribed: under the reload model
+          // `ensureService` reuses the object, so the store is the same and the location is already live.
+          if (subscriptions.has(service.location)) return
+          const location = service.location
+          bump(location, 1)
+          const off = service.deps.store.subscribe((event) => {
+            try {
+              send(event)
+            } catch {
+              // A dead stream: unwind exactly like a remove/teardown would, so `subscribers` and `subscriptions`
+              // stay consistent for a later location that reuses this slot.
+              unwatch(location)
+            }
+          })
+          subscriptions.set(location, () => {
+            off()
+            bump(location, -1)
+          })
+        }
         controller.enqueue(encoder.encode(`retry: 2000\n: ${PLUGIN_NAME} protocol ${PROTOCOL_VERSION}\n\n`))
-        if (lastEventId !== null) {
+        // A single-target stream replays from a cursor; a multi-location one cannot (one header, many cursors).
+        if (targets.length === 1 && lastEventId !== null) {
+          const service = targets[0]!
           const tail = service.eventsSince(lastEventId.seq, lastEventId.epoch)
           if (!tail.complete) {
             const reason =
@@ -299,35 +368,30 @@ export async function startGateway(config: GatewayConfig, options: GatewayOption
                 : "events were missed"
             controller.enqueue(
               encoder.encode(
-                `id: ${tail.epoch}.${tail.latest}\nevent: resync.required\ndata: ${JSON.stringify({ protocol: PROTOCOL_VERSION, seq: tail.latest, epoch: tail.epoch, time: Date.now(), location, runId: "", type: "resync.required", revision: 0, data: { reason } })}\n\n`,
+                `id: ${tail.epoch}.${tail.latest}\nevent: resync.required\ndata: ${JSON.stringify({ protocol: PROTOCOL_VERSION, seq: tail.latest, epoch: tail.epoch, time: Date.now(), location: service.location, runId: "", type: "resync.required", revision: 0, data: { reason } })}\n\n`,
               ),
             )
           } else for (const event of tail.events) send(event)
         }
-        unsubscribe = service.deps.store.subscribe((event) => {
-          try {
-            send(event)
-          } catch {
-            unsubscribe()
-          }
-        })
+        for (const service of targets) subscribe(service)
+        // Locations that register or unregister while this stream is open: follow them instead of needing a reconnect.
+        if (watch) serviceWatchers.add(watcher)
         heartbeat = setInterval(() => {
           try {
             controller.enqueue(encoder.encode(`: keep-alive ${Date.now()}\n\n`))
           } catch {
-            clearInterval(heartbeat)
+            if (heartbeat) clearInterval(heartbeat)
           }
         }, 15_000)
       },
       cancel() {
-        unsubscribe()
-        if (heartbeat) clearInterval(heartbeat)
-        subscribers.set(location, Math.max(0, (subscribers.get(location) ?? 1) - 1))
+        serviceWatchers.delete(watcher)
+        teardown()
       },
     })
     request.signal.addEventListener("abort", () => {
-      unsubscribe()
-      if (heartbeat) clearInterval(heartbeat)
+      serviceWatchers.delete(watcher)
+      teardown()
     })
     return new Response(stream, {
       headers: {
@@ -430,7 +494,12 @@ export async function startGateway(config: GatewayConfig, options: GatewayOption
           const header = request.headers.get("last-event-id") ?? url.searchParams.get("after")
           const match = header?.match(/^(?:([A-Za-z0-9-]*)\.)?(\d+)$/)
           const after = match ? { seq: Number(match[2]), ...(match[1] ? { epoch: match[1] } : {}) } : null
-          return events(request, serviceFor(location), after)
+          // No `location`: one multiplexed stream over every location, always watching the registry so locations
+          // that appear or leave while it is open are followed (a stream apiece would exhaust the browser's small
+          // per-origin pool). Replay from `Last-Event-ID` still works while it covers exactly one target. With
+          // `location`, it is that one location, pinned, with its `Last-Event-ID` replay.
+          if (location) return events(request, [serviceFor(location)], after, false)
+          return events(request, [...services.values()], after, true)
         }
         if (parts[0] === "workflows" && parts.length === 1)
           return json(await serviceFor(location).listWorkflows(), 200, extra)
@@ -552,9 +621,19 @@ export async function startGateway(config: GatewayConfig, options: GatewayOption
     port,
     tokens,
     register(location, service) {
+      const token = {}
+      registrations.set(location, token)
       services.set(location, service)
+      for (const watcher of Array.from(serviceWatchers)) watcher("add", service)
       return () => {
-        if (services.get(location) === service) services.delete(location)
+        // Only the current registration hands the location back: a leaked older instance cleaning up late (its
+        // `WorkflowService` is the same object on reload) must not unhook the live registration or its streams.
+        if (registrations.get(location) !== token) return
+        registrations.delete(location)
+        if (services.get(location) === service) {
+          services.delete(location)
+          for (const watcher of Array.from(serviceWatchers)) watcher("remove", service)
+        }
       }
     },
     attached(location) {

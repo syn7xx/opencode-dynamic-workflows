@@ -41,7 +41,7 @@ export function App() {
   let toastId = 0
 
   const hub = new EventHub({
-    eventsUrl: (location) => api.eventsUrl(location),
+    eventsUrl: () => api.eventsUrl(),
     authHeaders: () => api.authHeaders(),
     onUnauthorized: () => {
       // A token the Gateway no longer knows would fail every read; drop it (loopback reads need none).
@@ -72,20 +72,36 @@ export function App() {
     const loaded = await api.info()
     setInfo(loaded)
     for (const { location } of loaded.locations) hub.ensure(location)
+    hub.retain(loaded.locations.map((entry) => entry.location))
   }
   // A token was issued or dropped: the header's paired state comes from the Gateway, so ask again.
   createEffect(on(tokenRevision, () => void (info() && reloadInfo().catch(() => {})), { defer: true }))
 
   const boot = async () => {
-    try {
-      const loaded = await api.info()
-      setInfo(loaded)
-      setNeedsPairing(false)
-      setBootError(null)
-      for (const { location } of loaded.locations) hub.ensure(location)
-    } catch (error) {
-      if (error instanceof ApiError && error.code === "unauthorized") setNeedsPairing(true)
-      else setBootError(error)
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const loaded = await api.info()
+        setInfo(loaded)
+        setNeedsPairing(false)
+        setBootError(null)
+        for (const { location } of loaded.locations) hub.ensure(location)
+        hub.retain(loaded.locations.map((entry) => entry.location))
+        return
+      } catch (error) {
+        if (error instanceof ApiError && error.code === "unauthorized") {
+          setInfo(null)
+          setNeedsPairing(true)
+          return
+        }
+        // A network/5xx failure: retry with a small backoff, so the page recovers on its own after a service restart or
+        // a briefly unavailable loopback port, instead of parking on an error (or on "Connecting…") until a reload.
+        // Only the last attempt surfaces the error, with the manual Retry button.
+        if (attempt >= 5) {
+          if (!info()) setBootError(error)
+          return
+        }
+        await new Promise((resolve) => setTimeout(resolve, Math.min(500 * 2 ** attempt, 8_000)))
+      }
     }
   }
 
@@ -141,6 +157,9 @@ export function App() {
     const values = [...statuses().values()]
     if (values.length === 0) return { state: "idle" as const, label: "no streams" }
     if (values.some((status) => status === "unauthorized")) return { state: "error" as const, label: "not authorized" }
+    // A stream that ended for good (a 404: an older Gateway, a location this process no longer serves) never
+    // reconnects; showing it as "connecting" would be a lie.
+    if (values.some((status) => status === "closed")) return { state: "error" as const, label: "disconnected" }
     if (values.every((status) => status === "open")) return { state: "ok" as const, label: "live" }
     if (values.some((status) => status === "retrying")) return { state: "warn" as const, label: "reconnecting" }
     return { state: "warn" as const, label: "connecting" }

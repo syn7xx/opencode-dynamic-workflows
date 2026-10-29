@@ -114,6 +114,12 @@ export interface SseOptions {
   /** Base retry delay; the server's `retry:` wins when present. */
   retryMs?: number
   maxRetryMs?: number
+  /**
+   * How long to wait for response HEADERS before abandoning the attempt. A socket that accepts the connection but
+   * never answers would otherwise leave the stream stuck in `connecting` forever; after this the attempt is aborted
+   * and retried like any other drop. Applies only to establishing the connection, never to the stream itself.
+   */
+  connectTimeoutMs?: number
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>
 }
 
@@ -145,49 +151,85 @@ export function connectSse(options: SseOptions): SseConnection {
   const parser = new SseParser(options.lastEventId ?? "")
   const base = options.retryMs ?? 2000
   const max = options.maxRetryMs ?? 30_000
+  const connectTimeoutMs = options.connectTimeoutMs ?? 15_000
   let failures = 0
+
+  /**
+   * Free a response whose body nobody will read. A 401/5xx/odd-shaped response left unconsumed keeps its connection
+   * from the browser's small per-origin pool, so repeated retries starve the next connect — the "connecting forever"
+   * hang. A body already read (the open branch cancels its own reader) is a no-op here.
+   */
+  const drain = async (response: Response | undefined) => {
+    try {
+      await response?.body?.cancel()
+    } catch {
+      // Already cancelled/consumed, or no body: nothing to free.
+    }
+  }
 
   const run = async () => {
     while (!controller.signal.aborted) {
       options.onStatus?.(failures === 0 ? "connecting" : "retrying")
       let delay = parser.retry ?? base
+      let terminal = false
+      // Abort only the ESTABLISHMENT of this attempt: a host that accepts the socket but never answers must not leave
+      // the stream "connecting" forever. Combined with the outer signal (via AbortSignal.any) so that closing the
+      // connection also aborts the open body; the timer is cleared once headers arrive, so a live stream is untouched.
+      const timeout = new AbortController()
+      const connectTimer = setTimeout(() => timeout.abort(), connectTimeoutMs)
+      const signal = AbortSignal.any([controller.signal, timeout.signal])
+      let response: Response | undefined
       try {
         const headers: Record<string, string> = { accept: "text/event-stream", ...options.headers?.() }
         if (parser.lastEventId) headers["last-event-id"] = parser.lastEventId
-        const response = await doFetch(options.url, { headers, signal: controller.signal, cache: "no-store" })
-        if (response.status === 401) {
-          options.onStatus?.("unauthorized")
-          options.onUnauthorized?.()
-          failures += 1
-          delay = Math.min(max, base * 2 ** Math.min(failures, 4))
-        } else if (!response.ok || !response.body) {
-          failures += 1
-          options.onStatus?.("retrying", `HTTP ${response.status}`)
-          delay = Math.min(max, delay * 2 ** Math.min(failures - 1, 4))
-        } else {
-          options.onStatus?.("open")
-          failures = 0
-          const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
-          try {
-            for (;;) {
-              const { value, done } = await reader.read()
-              if (done) break
-              for (const message of parser.feed(value)) options.onMessage(message)
-            }
-          } finally {
-            reader.releaseLock()
-          }
-          parser.reset()
-          failures = 1
-        }
+        response = await doFetch(options.url, { headers, signal, cache: "no-store" })
       } catch (error) {
         if (controller.signal.aborted) break
         parser.reset()
         failures += 1
         options.onStatus?.("retrying", error instanceof Error ? error.message : String(error))
         delay = Math.min(max, delay * 2 ** Math.min(failures - 1, 4))
+      } finally {
+        clearTimeout(connectTimer)
       }
-      if (controller.signal.aborted) break
+      if (response) {
+        try {
+          if (response.status === 401) {
+            options.onStatus?.("unauthorized")
+            options.onUnauthorized?.()
+            failures += 1
+            delay = Math.min(max, base * 2 ** Math.min(failures, 4))
+          } else if (!response.ok || !response.body) {
+            failures += 1
+            options.onStatus?.("retrying", `HTTP ${response.status}`)
+            delay = Math.min(max, delay * 2 ** Math.min(failures - 1, 4))
+            // A missing route (an older Gateway, a location that no longer exists) never becomes available by
+            // retrying: stop instead of reconnecting forever and holding a connection the whole time.
+            terminal = response.status === 404
+          } else {
+            options.onStatus?.("open")
+            failures = 0
+            const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
+            try {
+              for (;;) {
+                const { value, done } = await reader.read()
+                if (done) break
+                for (const message of parser.feed(value)) options.onMessage(message)
+              }
+            } finally {
+              // Cancel the stream rather than only releasing the lock: a released-but-unread body is not cancelled and
+              // would hold a connection from the browser's small per-origin pool, starving later requests.
+              await reader.cancel().catch(() => {})
+              reader.releaseLock()
+            }
+            parser.reset()
+            failures = 1
+          }
+        } finally {
+          await drain(response)
+        }
+      }
+      if (controller.signal.aborted || terminal) break
       options.onStatus?.("retrying")
       await sleep(delay, controller.signal)
     }
