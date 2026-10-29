@@ -119,11 +119,17 @@ if (!calls.some((call) => call.name === "write" && call.successful))
 ```
 
 `toolCalls` starts the transcript read at the property access — not at resolve time; what you await is a promise — and
-memoizes it, so a receipt you never read costs nothing; it is `[]` for a Unit that never had a session or ran no
-tools. A Unit that failed still reports what it did — `value` is `null`, the calls are the evidence. And because a
-receipt is never `null`, `collect()` around a fan-out of receipts keeps failed Units — filter on `value`. A session
-that cannot be read throws rather than looking empty, so the check above never passes on a read failure. For a Unit
-replayed on resume `[]` means _unknown_, not "did nothing": a resumed Run cannot vouch for an earlier Run's work.
+memoizes it, so a receipt you never read costs nothing; it is `[]` for a Unit that ran no tools, or that never had a
+session to read. A Unit that failed still reports what it did — `value` is `null`, the calls are the evidence. And
+because a receipt is never `null`, `collect()` around a fan-out of receipts keeps failed Units — filter on `value`. For
+a Unit that ran in this Run, a session that cannot be read throws rather than looking empty, so the check above never
+passes on a read failure. For a Unit **replayed on resume** — a replayed failure and a resume of a resume included —
+the receipt reads the session the original Run recorded, so a resumed Run can vouch for the earlier Run's work. `[]`
+there means the Unit ran no tools **or** the evidence is _unknown_: the session may be gone (deleted, another machine,
+a reset database), unreadable, or absent because the Unit failed before creating one; it falls back to `[]` instead of
+failing, and the Run log records the unknown. Two things follow: a resumed Run may now fail an assertion that quietly
+passed on `[]` — that is the point — and `[]` on a replayed Unit is still not proof of innocence, so a safety check
+that must never be skipped belongs on a Run that actually ran the Unit.
 
 `successful` means the call **finished** (`status: "completed"`, no error), not that it succeeded: a `shell` call that
 exits non-zero is still a finished call. `output` is the host's raw result with nothing added, so you may or may not be

@@ -128,11 +128,32 @@ interface UnitOutcome {
   /** The Unit's name in progress (label else subagent, prefixed) — for a legible read-failure message. */
   label: string | null
   sessionID: string | null
+  /**
+   * True when the Unit came back from a previous Run's record instead of running live. A replayed Unit has no
+   * session of its own; its {@link UnitOutcome.sessionID} is the one the ORIGINAL Run recorded, carried only so a
+   * receipt can read that session's tool calls.
+   */
+  replayed: boolean
+}
+
+/** One Unit a previous Run recorded, in {@link ReplayPlan}. */
+export interface ReplayUnit {
+  prompt: string
+  status: Unit["status"]
+  output?: string
+  schema: boolean
+  subagent: string
+  /**
+   * The session the original Run recorded. Carried only for a replayed Unit's receipt: the Unit itself keeps
+   * `sessionID: null` (it did not run in this Run), while the receipt can still read the evidence the original
+   * session left behind.
+   */
+  sessionID?: string
 }
 
 /** What a previous Run recorded, for resume. Keyed by Unit ordinal (start order). */
 export interface ReplayPlan {
-  units: Map<number, { prompt: string; status: Unit["status"]; output?: string; schema: boolean; subagent: string }>
+  units: Map<number, ReplayUnit>
   /** Answers to `ctx.ask`, in the order they were asked; `null` means the author's fallback was used. */
   answers: Array<string[][] | null>
   rerunFailed: boolean
@@ -261,10 +282,13 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
     const label = opts.label ? `${prefix}${opts.label}` : prefix ? `${prefix}${subagent}` : null
     const model = toHostModel(opts.model)
     const withVariant = model && opts.effort && !model.variant ? { ...model, variant: opts.effort } : model
-    /** The session the Unit settled with, once one exists — where a receipt reads its calls from. */
+    /** The session the Unit settled with, once one exists — where a receipt reads its calls from. For a replayed
+     * Unit this is the session the ORIGINAL Run recorded (see the replay branch below), never a new one. */
     let sessionID: string | null = null
+    /** Set when this Unit comes back from the previous Run's record (replay), so its receipt reads the old session. */
+    let wasReplayed = false
     /** Every return goes through here: the value `agent()` returns, plus what a receipt carries. */
-    const outcome = (value: unknown): UnitOutcome => ({ value, unitId, label, sessionID })
+    const outcome = (value: unknown): UnitOutcome => ({ value, unitId, label, sessionID, replayed: wasReplayed })
     let schema: z.ZodType | undefined
     try {
       schema = resolveJsonSchema(opts.schema)
@@ -308,12 +332,19 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
             endedAt: Date.now(),
           }
           emit(done)
+          // The replayed Unit's receipt reads the ORIGINAL session's calls; the Unit itself stays `sessionID: null`.
+          wasReplayed = true
+          sessionID = record.sessionID ?? null
           return outcome(value.value)
         }
         if (!plan.rerunFailed) {
           const error = "replayed failure from the resumed Run"
           emit({ ...unit, status: "failed", error, startedAt: Date.now(), endedAt: Date.now() })
           state.errors.push({ unit: label ?? subagent, prompt, subagent, error })
+          // A failed Unit's receipt is still its evidence — and this one did not run here, so it reads the ORIGINAL
+          // session exactly like a replayed success. `value` stays `null`: the failure is the recorded truth.
+          wasReplayed = true
+          sessionID = record.sessionID ?? null
           return outcome(null)
         }
       } else if (record) {
@@ -454,41 +485,87 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
   }
 
   /**
+   * The one trace of a replayed Unit whose evidence is unavailable. `[]` on its own reads exactly like "the Unit
+   * called no tools", so a Run notice is the only way the author (or whoever reads the Run later) can tell. A notice,
+   * not `state.errors`: the Unit did not drop, and no Run outcome may change.
+   *
+   * Guarded because reporting a failure must never become one: a host logger that throws would turn a promised `[]`
+   * into the rejection this whole path exists to prevent.
+   */
+  const noteUnknown = (outcome: UnitOutcome, reason: string): void => {
+    try {
+      events?.onLog?.(
+        `replayed Unit ${outcome.label ?? outcome.unitId}: its tool calls are unknown, not "none" — ${reason}`,
+      )
+    } catch {
+      // A logger this hostile has nothing to add to the Run's state.
+    }
+  }
+
+  /**
    * Read the tool calls a Unit's session recorded, straight from the host transcript — never from the model's own
-   * account of what it did. A session that exists but cannot be READ throws instead of reporting no calls: an
-   * assertion like "the migration really ran" must never pass on a read failure.
+   * account of what it did.
+   *
+   * The two paths deliberately differ, because they answer different questions:
+   *
+   * - A Unit that ran in THIS Run: a session that cannot be READ throws instead of reporting no calls. The session has
+   *   just been used, so a read failure is a surprise, and an assertion like "the migration really ran" must never
+   *   pass on one.
+   * - A Unit replayed from a previous Run: anything that goes wrong yields `[]` (unknown), never a throw — a failed
+   *   read AND a transcript whose shape the host never promised. That session may legitimately be gone (another
+   *   process, another machine, another project, a reset database), and failing here would break a resumed Workflow
+   *   that worked before this evidence was readable at all. The replayed path is best-effort by contract; the live
+   *   path stays strict.
    */
   const readToolCalls = async (outcome: UnitOutcome, sessionID: string): Promise<UnitToolCall[]> => {
+    // A replayed Unit's evidence can never fail the resumed Run, so every step below is guarded by this flag.
+    const bestEffort = outcome.replayed
     let messages: readonly HostMessage[]
     try {
       messages = await input.host.session.context({ sessionID })
     } catch (error) {
+      if (bestEffort) {
+        noteUnknown(outcome, `its original session could not be read (${stringifyError(error)})`)
+        return []
+      }
       throw new Error(
         `agent({ receipts }): reading the session of Unit ${outcome.label ?? outcome.unitId} failed: ${stringifyError(error)}`,
         { cause: error },
       )
     }
-    const calls: UnitToolCall[] = []
-    for (const message of messages) {
-      for (const part of message.content ?? []) {
-        if (part.type !== "tool") continue
-        calls.push({
-          name: part.name ?? "tool",
-          input: clipToolText(toolText(part.state?.input)),
-          // Deliberately differs from `toTranscript`: a receipt falls back to the call's error message, the Gateway
-          // transcript shows the host's raw text.
-          output: clipToolText(toolText(part.state?.content) || (part.state?.error?.message ?? "")),
-          successful: part.state?.status === "completed" && !part.state?.error,
-        })
+    try {
+      const calls: UnitToolCall[] = []
+      for (const message of messages) {
+        for (const part of message.content ?? []) {
+          if (part.type !== "tool") continue
+          calls.push({
+            name: part.name ?? "tool",
+            input: clipToolText(toolText(part.state?.input)),
+            // Deliberately differs from `toTranscript`: a receipt falls back to the call's error message, the Gateway
+            // transcript shows the host's raw text.
+            output: clipToolText(toolText(part.state?.content) || (part.state?.error?.message ?? "")),
+            successful: part.state?.status === "completed" && !part.state?.error,
+          })
+        }
       }
+      return calls
+    } catch (error) {
+      // The host resolved something the type says it cannot (no list, a message whose `content` is not a list). On the
+      // live path that is a real error; on the replayed path it must not become a rejection either.
+      if (bestEffort) {
+        noteUnknown(outcome, "the host returned a transcript the engine cannot read")
+        return []
+      }
+      throw error
     }
-    return calls
   }
 
   /**
    * The receipt `agent(…, { receipts: true })` resolves to. `toolCalls` is a lazily memoized getter: the transcript is
-   * read on first access and never before, so a Workflow that only wants the value pays nothing. A Unit with no
-   * session (replayed, setup failure) has nothing to read and reports `[]` without a host call.
+   * read on first access and never before, so a Workflow that only wants the value pays nothing. A Unit that never
+   * had a session (a setup failure, a Unit skipped before creating one) has nothing to read and reports `[]` without
+   * a host call; a replayed Unit instead carries the id the original Run recorded, so its receipt can still read the
+   * earlier session — and reports `[]` (unknown) when that session is gone or cannot be read.
    */
   const receiptOf = (outcome: UnitOutcome): UnitReceipt<unknown> => {
     const { sessionID } = outcome
@@ -505,6 +582,15 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
       configurable: true,
       get() {
         if (!toolCalls) {
+          if (!sessionID && outcome.replayed) {
+            // Nothing to read at all: a replayed Unit whose Run recorded no session for it. Neutral wording on purpose —
+            // it may never have created one, or the Run that did may no longer be journaled. Still unknown, still
+            // reported, never silently "no tools".
+            noteUnknown(
+              outcome,
+              "no session is recorded for it (it never created one, or its Run is no longer journaled)",
+            )
+          }
           toolCalls = sessionID ? readToolCalls(outcome, sessionID) : Promise.resolve([])
           // A guard, not a swallow: an awaiting author still gets the rejection, but an incidental read of this
           // property can never leave it unhandled.

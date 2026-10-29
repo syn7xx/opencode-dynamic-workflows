@@ -425,8 +425,12 @@ export function processStartedAtSelf(): number {
 /** Another process's start time from `ps` (second precision), or null when it cannot be read. */
 export function processStartedAt(pid: number): number | null {
   try {
-    // `lstart` is printed in the TZ of `ps`: pin it to UTC so the parse does not depend on anyone's timezone.
-    const out = Bun.spawnSync(["ps", "-o", "lstart=", "-p", String(pid)], { env: { ...process.env, TZ: "UTC" } })
+    // `lstart` is printed in the TZ of `ps` AND in the process locale: pin both, so the parse works on a machine whose
+    // locale is not English (a localized weekday/month would make `Date.parse` return NaN). `TZ` fixes the clock,
+    // `LC_ALL` the wording; `GMT`/`UTC` below then matches the C-locale `Thu Oct 29 06:30:50 2026` form.
+    const out = Bun.spawnSync(["ps", "-o", "lstart=", "-p", String(pid)], {
+      env: { ...process.env, TZ: "UTC", LC_ALL: "C" },
+    })
       .stdout.toString()
       .trim()
     const time = out ? Date.parse(`${out} GMT`) : Number.NaN

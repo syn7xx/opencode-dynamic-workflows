@@ -14,7 +14,7 @@ import path from "node:path"
 
 import manifest from "../../package.json" with { type: "json" }
 import type { Broker } from "../broker"
-import type { ReplayPlan } from "../context"
+import type { ReplayPlan, ReplayUnit } from "../context"
 import { runSlot, runSlotsFull, unitSlot } from "../engine-global"
 import { formatModel, type EngineHost, type HostMessage } from "../host"
 import { ownerAlive, type Journal } from "../journal"
@@ -45,6 +45,49 @@ import type { PluginConfig } from "./config"
 
 export const PLUGIN_NAME = "@syn7xx/opencode-dynamic-workflows"
 export const PLUGIN_VERSION: string = manifest.version
+
+/**
+ * How many ancestor journals a resume reads at most when looking for the Run that actually recorded a Unit's session.
+ * Each hop is one resume, so a longer chain means a very unlucky Run; the walk is best-effort and simply stops.
+ */
+const MAX_RESUME_HOPS = 32
+
+/**
+ * The session each Unit of `run` was ORIGINALLY recorded with, by ordinal.
+ *
+ * A resumed Run journals its replayed Units with `sessionID: null` — correct, they did not run there — so resuming
+ * that Run again finds no session and a receipt falls back to `[]`. The evidence still exists one or more hops back,
+ * so walk `resumeOf` until a Run that actually ran the Unit supplies its session. Matching is on ordinal AND prompt:
+ * a divergent resume runs a Unit live, and that Run then records its own session, which wins at the first hop; a
+ * changed prompt at the same ordinal is a different Unit and is never matched.
+ *
+ * Best-effort and bounded: a missing, cleaned-up or unreadable ancestor journal just means no session — exactly what
+ * a resume did before this existed. Nothing here can fail a resume.
+ */
+export async function originalSessions(journal: Journal, run: Run): Promise<Map<number, string>> {
+  const sessions = new Map<number, string>()
+  const promptOf = new Map<number, string>()
+  for (const unit of run.units) {
+    promptOf.set(unit.ordinal, unit.prompt)
+    if (unit.sessionID) sessions.set(unit.ordinal, unit.sessionID)
+  }
+  const visited = new Set<string>([run.runId])
+  let hop = run.resumeOf
+  // `visited` already holds the Run being resumed, so this reads at most MAX_RESUME_HOPS ancestor journals.
+  while (hop && !visited.has(hop) && visited.size <= MAX_RESUME_HOPS) {
+    visited.add(hop)
+    const ancestor = await journal.read(hop).catch(() => null)
+    if (!ancestor) break
+    for (const unit of ancestor.run.units) {
+      if (!unit.sessionID || sessions.has(unit.ordinal)) continue
+      if (promptOf.get(unit.ordinal) !== unit.prompt) continue
+      sessions.set(unit.ordinal, unit.sessionID)
+    }
+    if ([...promptOf.keys()].every((ordinal) => sessions.has(ordinal))) break
+    hop = ancestor.run.resumeOf
+  }
+  return sessions
+}
 
 export interface ServiceDeps {
   location: string
@@ -769,17 +812,23 @@ export class WorkflowService {
       )
     }
     const run = record.run
-    const units = new Map<
-      number,
-      { prompt: string; status: Unit["status"]; output?: string; schema: boolean; subagent: string }
-    >()
+    // A replayed Unit is journaled with `sessionID: null` (it did not run in that Run), so resuming a RESUME would see
+    // no session at all and its receipt would report `[]` — the very gap this closes. Walk the resume chain back to the
+    // Run that actually ran each Unit and take its session from there.
+    const original = await originalSessions(this.deps.journal, run)
+    const units = new Map<number, ReplayUnit>()
     for (const unit of run.units) {
+      const sessionID = original.get(unit.ordinal)
       units.set(unit.ordinal, {
         prompt: unit.prompt,
         status: unit.status,
         ...(unit.output !== undefined ? { output: unit.output } : {}),
         schema: unit.schema,
         subagent: unit.subagent,
+        // The session the Unit was ORIGINALLY recorded with, so a replayed Unit's receipt can still read the evidence
+        // it left. The replayed Unit itself keeps `sessionID: null` (it did not run in this Run): this is the receipt's
+        // source only, never the Unit's.
+        ...(sessionID ? { sessionID } : {}),
       })
     }
     // One entry per `ctx.ask` the script got past, in order. An ask released because the Run stopped is not a

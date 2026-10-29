@@ -342,11 +342,21 @@ async run({ agent }) {
 `value` is exactly what `agent()` returns without `receipts` — `null` when the Unit failed — and a failed Unit still
 reports what it did: that is the raw evidence, alongside `errors` for why it dropped. Reading `toolCalls` starts the
 transcript read at the property access, not at resolve time, and memoizes it, so a Workflow that never asks pays
-nothing; what you await is a promise. It is `[]` for a Unit that never had a session or that ran no tools. For a Unit
-replayed on resume that `[]` means *unknown*, not "did nothing": a resumed Run cannot vouch for work an earlier Run
-did, so an evidence-based assertion that passed before a plugin reload can fail after a resume even though the work
-really happened. A session that exists but cannot be read rejects rather than looking empty, so an assertion like the
-one above never passes on a read failure.
+nothing; what you await is a promise. It is `[]` for a Unit that ran no tools, or that never had a session to read.
+
+For a Unit **replayed on resume** — including a recorded failure that was replayed rather than re-run, and a resume of
+a resume — the receipt reads the session the original Run recorded, so a resumed Run can vouch for work the earlier Run
+did. `[]` there means one of two things: the Unit ran and called no tools, or the evidence is *unknown* — that session
+may legitimately be gone (deleted, another machine, another project, a reset database), unreadable, or absent because
+the Unit failed before it created one. That fallback is deliberate and never throws: a resumed Workflow keeps working
+exactly as it did before receipts could read evidence at all, and the Run log says when a receipt came back unknown.
+
+The strict rule belongs to Units that ran in **this** Run: a session that exists but cannot be read rejects rather than
+looking empty, so an assertion like the one above never passes on a read failure. Two consequences are worth knowing,
+because they pull in opposite directions. Reading real evidence on a resume can make an assertion that quietly passed
+on `[]` fail on the call the earlier Run actually made — that is the point, but it is a visible change. And `[]` on a
+replayed Unit is still not proof of innocence: a check that must never be skipped — "nothing ever ran a destructive
+command" — belongs on a Run that actually ran the Unit, not on a resume of one.
 
 `successful` means the call **finished** (`status: "completed"` with no error), not that the command succeeded: a
 `shell` call that exits non-zero is still a finished call. `output` is the host's raw result with nothing added, so a
