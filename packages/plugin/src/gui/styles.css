@@ -36,6 +36,20 @@
   font-weight: 640;
 }
 
+[data-component="workflows-panel"] .wf-crumb {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--v2-text-text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+[data-component="workflows-panel"] .wf-crumb:hover {
+  color: var(--v2-text-text-base);
+  text-decoration: underline;
+}
+
 [data-component="workflows-panel"] .wf-crumb-sep {
   color: var(--v2-text-text-faint);
 }

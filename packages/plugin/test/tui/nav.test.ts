@@ -8,6 +8,7 @@ import {
   initialNav,
   moveCursor,
   pop,
+  popTo,
   push,
   setCursor,
   visibleWindow,
@@ -30,6 +31,17 @@ describe("navigation", () => {
   test("deep links start in a Run, with or without the library underneath", () => {
     expect(initialNav({ runId: "r", unitId: "u" }).stack.map((view) => view.kind)).toEqual(["library", "run", "unit"])
     expect(initialNav({ runId: "r", root: "run" }).stack.map((view) => view.kind)).toEqual(["run"])
+  })
+
+  test("popTo drops the views above a breadcrumb depth, and is a no-op otherwise", () => {
+    let nav = initialNav()
+    nav = push(nav, { kind: "run", runId: "r" })
+    nav = push(nav, { kind: "unit", runId: "r", unitId: "u" })
+    expect(popTo(nav, 1).stack.map((view) => view.kind)).toEqual(["library"])
+    expect(popTo(nav, 2).stack.map((view) => view.kind)).toEqual(["library", "run"])
+    // A depth at or above the current stack, or below the root: nothing to drop.
+    expect(popTo(nav, 3)).toBe(nav)
+    expect(popTo(nav, 0)).toBe(nav)
   })
 
   test("cursors are per view and clamp to the list", () => {

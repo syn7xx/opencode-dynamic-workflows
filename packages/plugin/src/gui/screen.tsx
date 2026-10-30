@@ -8,7 +8,18 @@ import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, t
 import type { LibraryEntry, PendingInteraction, WorkflowListing } from "../protocol"
 import { confirm, pick, startAnswer, submitText, toggle, type AnswerState, type AnswerStep } from "../ui/answer"
 import { savedArgs, shortId, unitName, workflowName, type Tone } from "../ui/format"
-import { current, cursor, cycleFilter, filterEntries, initialNav, pop, push, setCursor, type Nav } from "../ui/nav"
+import {
+  current,
+  cursor,
+  cycleFilter,
+  filterEntries,
+  initialNav,
+  pop,
+  popTo,
+  push,
+  setCursor,
+  type Nav,
+} from "../ui/nav"
 import type { AnswerBindings } from "./answer"
 import type { PluginContext } from "./context"
 import { replyInteraction, startSaved, useSaved } from "./flows"
@@ -171,6 +182,11 @@ export function WorkflowsScreen(props: ScreenProps) {
     else props.onClose()
   }
 
+  /** Jump back to a breadcrumb: drop every view above it, keeping the one clicked. */
+  function goToDepth(depth: number) {
+    setNav(popTo(nav(), depth))
+  }
+
   /** Open a session (a Unit's transcript, or the Run's parent) as a tab, the way the TUI focuses it. */
   function openSession(sessionID: string) {
     if (props.serverID) ctx.tabs.open({ server: props.serverID, id: sessionID }, { focus: true })
@@ -245,7 +261,19 @@ export function WorkflowsScreen(props: ScreenProps) {
                 <Show when={index() > 0}>
                   <span class="wf-crumb-sep">›</span>
                 </Show>
-                <Show when={index() === crumbs().length - 1} fallback={<span>{part}</span>}>
+                <Show
+                  when={index() === crumbs().length - 1}
+                  fallback={
+                    <button
+                      type="button"
+                      class="wf-crumb"
+                      onClick={() => goToDepth(index() + 1)}
+                      title={ctx.t("action.back")}
+                    >
+                      {part}
+                    </button>
+                  }
+                >
                   <b>{part}</b>
                 </Show>
               </>
