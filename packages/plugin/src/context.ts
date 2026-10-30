@@ -1,5 +1,12 @@
 import { createCapabilities } from "./capabilities"
-import { formatModel, toHostModel, type EngineHost, type HostMessage, type HostPermissionRule } from "./host"
+import {
+  formatModel,
+  toHostModel,
+  type EngineHost,
+  type HostMessage,
+  type HostModelRef,
+  type HostPermissionRule,
+} from "./host"
 import { emptyUsage, type Unit, type Usage } from "./protocol"
 import { DEFAULT_SUBAGENT, runUnit, stringifyError, type UnitRunResult } from "./runner"
 import { toUnitOutput } from "./runs"
@@ -169,6 +176,13 @@ export interface CreateContextInput<A> {
   workflow: string
   location: string
   parentSessionID: string
+  /**
+   * The model of the session that launched this Run — what `agent(…, { model: "inherit" })` and a bare
+   * `agent(…, { effort })` inherit. `null`/absent when the caller is not an ordinary session (a
+   * headless/synthetic starter), in which case inheritance is refused with a Run log line rather than a silent
+   * drop. Fixed at Run start; nested Workflows share the root caller's value.
+   */
+  callerModel?: HostModelRef | null
   args: A
   state: EngineState
   events?: EngineEvents
@@ -235,6 +249,62 @@ const noAgentQuestions: UnitBinding["ask"] = async () => null
 /** A Unit could not be set up (e.g. no worktree): it fails as a value like any other Unit. */
 class UnitSetupError extends Error {}
 
+/**
+ * The model a Unit should run on, from the author's `model`/`effort`, the caller's model, and the subagent's own
+ * config — the three sources `agent()` names.
+ *
+ * Precedence (`effort` sets the resolved model's reasoning `variant`):
+ * - An explicit `model` wins. If it names its own variant (`"provider/model#high"`), that variant wins over `effort`.
+ * - The sentinel `"inherit"` uses the caller's model; here `effort`, when given, **overrides** the caller's own
+ *   variant — an author who names a reasoning level means it.
+ * - No `model` but `effort` also inherits the caller's model, so a bare `effort` is "my model, at this level".
+ * - Neither `model` nor `effort`: the Unit inherits the subagent config (returns `undefined`) — the host resolves
+ *   the model from `agent:`.
+ *
+ * When inheritance is requested but no caller model is known (a headless/synthetic caller) the model is `undefined`
+ * and `warning` says why, so the fallback is legible rather than a silent no-op. A `model` that was supplied but
+ * cannot be resolved is likewise reported instead of quietly inheriting: a typo must never select a different model
+ * than the author named. The caller emits `warning` only for a Unit that actually runs (never for a replayed Unit),
+ * keeping the Run log honest.
+ */
+export function resolveUnitModel(
+  model: unknown,
+  effort: string | undefined,
+  callerModel: HostModelRef | null,
+): { model: HostModelRef | undefined; warning: string | null } {
+  if (model === "inherit") {
+    if (!callerModel) {
+      return {
+        model: undefined,
+        warning:
+          'agent({ model: "inherit" }): the launching session has no model to inherit (the Run was started by a headless or synthetic caller); the Unit runs on its subagent\u2019s configured model',
+      }
+    }
+    return { model: effort ? { ...callerModel, variant: effort } : callerModel, warning: null }
+  }
+  const explicit = toHostModel(model)
+  if (explicit) {
+    return { model: effort && !explicit.variant ? { ...explicit, variant: effort } : explicit, warning: null }
+  }
+  // A model was named but did not resolve to a usable `provider/model`: fail loudly rather than fall through to
+  // inheritance (which would silently run the Unit on a model the author never asked for).
+  const supplied = model !== undefined && model !== null
+  if (supplied) {
+    return {
+      model: undefined,
+      warning: `agent({ model: ${JSON.stringify(model)} }): not a usable model (want "provider/model#variant", { providerID, modelID }, or "inherit"); the Unit runs on its subagent\u2019s configured model`,
+    }
+  }
+  if (effort) {
+    if (callerModel) return { model: { ...callerModel, variant: effort }, warning: null }
+    return {
+      model: undefined,
+      warning: `agent({ effort: ${JSON.stringify(effort)} }): no model was given and the launching session has no model to inherit (the Run was started by a headless or synthetic caller); the effort is ignored and the Unit runs on its subagent\u2019s configured model`,
+    }
+  }
+  return { model: undefined, warning: null }
+}
+
 export function createWorkflowContext<A>(input: CreateContextInput<A>): WorkflowContext<A> {
   const { state, events } = input
   const limits: RunLimits = { ...DEFAULT_LIMITS, ...input.limits }
@@ -280,8 +350,9 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
     const subagent = opts.subagent ?? opts.agentType ?? DEFAULT_SUBAGENT
     const phase = opts.phase !== undefined ? `${prefix}${opts.phase}` : state.currentPhase
     const label = opts.label ? `${prefix}${opts.label}` : prefix ? `${prefix}${subagent}` : null
-    const model = toHostModel(opts.model)
-    const withVariant = model && opts.effort && !model.variant ? { ...model, variant: opts.effort } : model
+    const callerModel = input.callerModel ?? null
+    const modelChoice = resolveUnitModel(opts.model, opts.effort, callerModel)
+    const withVariant = modelChoice.model
     /** The session the Unit settled with, once one exists — where a receipt reads its calls from. For a replayed
      * Unit this is the session the ORIGINAL Run recorded (see the replay branch below), never a new one. */
     let sessionID: string | null = null
@@ -356,6 +427,12 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
     }
 
     emit(unit)
+    // The inheritance fallback is only real for a Unit that will actually run: never for a replayed Unit (handled
+    // above), and not for one already dropped by a limit or an aborted Run.
+    if (modelChoice.warning && !limitHit && !signal.aborted) {
+      state.logs.push(modelChoice.warning)
+      events?.onLog?.(modelChoice.warning)
+    }
     try {
       const value = await limiter.run(async () => {
         let current: Unit = { ...unit, status: "running", startedAt: Date.now() }
@@ -727,6 +804,7 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
     phase,
     budget,
     signal,
+    model: formatModel(input.callerModel ?? undefined),
     worktrees: () => state.worktrees.map((entry) => ({ ...entry })),
   } as unknown as WorkflowContext<A>
 }

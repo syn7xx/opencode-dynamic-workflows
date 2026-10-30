@@ -16,7 +16,7 @@ import manifest from "../../package.json" with { type: "json" }
 import type { Broker } from "../broker"
 import type { ReplayPlan, ReplayUnit } from "../context"
 import { runSlot, runSlotsFull, unitSlot } from "../engine-global"
-import { formatModel, type EngineHost, type HostMessage } from "../host"
+import { formatModel, toHostModel, type EngineHost, type HostMessage, type HostModelRef } from "../host"
 import { ownerAlive, type Journal } from "../journal"
 import { hasRelativeImports, loadWorkflow, loadWorkflowConfig, sha256 } from "../loader"
 import { runWorkflow, type RunWorkflowOutput } from "../orchestrator"
@@ -115,6 +115,12 @@ export interface StartOptions {
   replay?: ReplayPlan
   resumeOf?: string | null
   identity?: WorkflowIdentity
+  /**
+   * The caller's model to record and inherit, overriding what `parentSessionID` would resolve to. Resume passes the
+   * value journaled with the original Run, so a Unit with `model: "inherit"` keeps the caller's model even when the
+   * launching session is gone.
+   */
+  callerModel?: HostModelRef | null
   /**
    * Resume-only: how to load the journaled script. `executionSource` is the Run's own executable snapshot;
    * `sourcePath` anchors the relative imports of a record journaled before that snapshot existed. Resume reads
@@ -451,6 +457,13 @@ export class WorkflowService {
     const args = normalizeArgs(input.args)
     const parentSessionID =
       input.parentSessionID ?? (await this.starterSession(input.name ?? "inline", options.surface))
+    // The caller's model, for `agent(…, { model: "inherit" })` and a bare `agent(…, { effort })`. Resume passes the
+    // value journaled with the original Run (`options.callerModel`), so the inheritance survives a gone session;
+    // otherwise it is resolved live from `parentSessionID`. Best-effort: a session that cannot be read (gone,
+    // another machine) or a synthetic starter yields `null`, and inheritance is refused with a Run log line rather
+    // than a crash — the Run itself does not depend on it.
+    const callerModel =
+      options.callerModel !== undefined ? options.callerModel : await this.callerModelOf(parentSessionID)
 
     let source: string
     let sourcePath: string | undefined = options.resume?.sourcePath
@@ -535,6 +548,7 @@ export class WorkflowService {
       args,
       instance: this.deps.instance,
       ...(executionSource !== undefined ? { executionSource } : {}),
+      callerModel: formatModel(callerModel ?? undefined),
     })
     const live: LiveRun = { stop: () => {}, units: new Map() }
     const queuedStop = new AbortController()
@@ -604,6 +618,7 @@ export class WorkflowService {
           journal: this.deps.journal,
           runId,
           parentSessionID,
+          callerModel,
           location: this.deps.location,
           instance: this.deps.instance,
           signal,
@@ -683,6 +698,22 @@ export class WorkflowService {
       permissions: [],
     })
     return info.id
+  }
+
+  /**
+   * The model of the session that launched a Run, as a {@link HostModelRef}, or `null` when it cannot be known.
+   *
+   * Best-effort and never throws: an unreadable session (gone, another machine) or a starter with no model both
+   * yield `null`. The Run logs a line where inheritance was requested so the absence is legible, and runs on the
+   * subagent's own model instead.
+   */
+  private async callerModelOf(sessionID: string): Promise<HostModelRef | null> {
+    try {
+      const info = await this.deps.host.session.get({ sessionID })
+      return info.model ?? null
+    } catch {
+      return null
+    }
   }
 
   /** End a Run that never started running. Journaled first, announced second (the orchestrator's rule). */
@@ -870,6 +901,7 @@ export class WorkflowService {
       },
       {
         ...options,
+        callerModel: toHostModel(record.callerModel ?? undefined) ?? null,
         replay,
         resumeOf: runId,
         identity: run.workflow,

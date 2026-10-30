@@ -31,6 +31,12 @@ export interface JournalRecord {
   /** The bundled `execution.ts` for a decomposed durable Workflow; `undefined` for a single-file or inline Run. */
   executionSource?: string
   args: unknown
+  /**
+   * The model of the session that launched the Run, as `"provider/model#variant"` — journaled so a resume keeps it
+   * even when the launching session is gone (a closed session, another process, another machine). `null` when the
+   * caller had none to record (a headless/synthetic starter).
+   */
+  callerModel: string | null
   result?: unknown
   /** `units.jsonl`, in the order the transitions happened. */
   transitions: ProtocolEvent[]
@@ -51,7 +57,10 @@ export interface JournalListOptions {
 
 export interface Journal {
   root: string
-  begin(run: Run, input: { source: string; args: unknown; instance: string; executionSource?: string }): Promise<void>
+  begin(
+    run: Run,
+    input: { source: string; args: unknown; instance: string; executionSource?: string; callerModel?: string | null },
+  ): Promise<void>
   /** Record one transition. Only `unit.updated` and `interaction.resolved` are journaled. */
   append(event: ProtocolEvent): Promise<void>
   /** Rewrite `run.json` with the latest snapshot (status changes, cleanup bookkeeping). */
@@ -88,6 +97,11 @@ interface RunDocument {
   run: Run
   args: unknown
   owner: JournalOwner | null
+  /**
+   * The launching session's model (`"provider/model#variant"`), or `null`. Kept beside `args` — a Run-level input
+   * that a resume must reproduce, but not part of the public `Run` (which has no engine-internal fields).
+   */
+  callerModel?: string | null
 }
 
 /** `<root>/.opencode/workflows/runs` — the journal for one project. */
@@ -153,10 +167,12 @@ function parseRunDocument(value: unknown): RunDocument | null {
     startedAt: run.startedAt,
   })
   const owner = document.owner as RunDocument["owner"]
+  const callerModel = (document as { callerModel?: unknown }).callerModel
   return {
     version: typeof document.version === "number" ? document.version : 0,
     args: document.args,
     owner: owner && typeof owner.pid === "number" ? owner : null,
+    callerModel: typeof callerModel === "string" ? callerModel : null,
     run: {
       ...base,
       status,
@@ -224,7 +240,7 @@ export function createJournal(root: string, options: JournalOptions = {}): Journ
   const chains = new Map<string, Promise<void>>()
   /** Runs whose last append failed: the next line starts on a fresh line, so a torn fragment costs only itself. */
   const torn = new Set<string>()
-  const opened = new Map<string, { args: unknown; owner: RunDocument["owner"] }>()
+  const opened = new Map<string, { args: unknown; owner: RunDocument["owner"]; callerModel: string | null }>()
   const runDirectory = (runId: string): string => path.join(root, runId)
 
   const chain = (runId: string, task: () => Promise<void>, context: string): Promise<void> => {
@@ -251,8 +267,13 @@ export function createJournal(root: string, options: JournalOptions = {}): Journ
     }
   }
 
-  const writeRun = async (run: Run, args: unknown, owner: RunDocument["owner"]): Promise<void> => {
-    const document: RunDocument = { version: RECORD_VERSION, run, args, owner }
+  const writeRun = async (
+    run: Run,
+    args: unknown,
+    owner: RunDocument["owner"],
+    callerModel: string | null,
+  ): Promise<void> => {
+    const document: RunDocument = { version: RECORD_VERSION, run, args, owner, callerModel }
     await mkdir(runDirectory(run.runId), { recursive: true })
     await writeAtomic(path.join(runDirectory(run.runId), RUN_FILE), `${JSON.stringify(document, null, 2)}\n`)
   }
@@ -285,7 +306,8 @@ export function createJournal(root: string, options: JournalOptions = {}): Journ
 
     begin(run, input) {
       const owner: JournalOwner = { pid: process.pid, instance: input.instance, startedAt: processStartedAtSelf() }
-      opened.set(run.runId, { args: input.args, owner })
+      const callerModel = input.callerModel ?? null
+      opened.set(run.runId, { args: input.args, owner, callerModel })
       return chain(
         run.runId,
         async () => {
@@ -297,7 +319,7 @@ export function createJournal(root: string, options: JournalOptions = {}): Journ
           if (input.executionSource !== undefined)
             await writeAtomic(path.join(directory, EXECUTION_FILE), input.executionSource)
           else await rm(path.join(directory, EXECUTION_FILE), { force: true }).catch(() => {})
-          await writeRun(run, input.args, owner)
+          await writeRun(run, input.args, owner, callerModel)
         },
         "begin",
       )
@@ -325,7 +347,12 @@ export function createJournal(root: string, options: JournalOptions = {}): Journ
         run.runId,
         async () => {
           const previous = known ? null : await readDocument(run.runId)
-          await writeRun(run, known?.args ?? previous?.args, known?.owner ?? previous?.owner ?? null)
+          await writeRun(
+            run,
+            known?.args ?? previous?.args,
+            known?.owner ?? previous?.owner ?? null,
+            known?.callerModel ?? previous?.callerModel ?? null,
+          )
         },
         "update",
       )
@@ -337,7 +364,7 @@ export function createJournal(root: string, options: JournalOptions = {}): Journ
       return chain(
         run.runId,
         async () => {
-          await writeRun(run, known?.args, known?.owner ?? null)
+          await writeRun(run, known?.args, known?.owner ?? null, known?.callerModel ?? null)
           await writeAtomic(
             path.join(runDirectory(run.runId), RESULT_FILE),
             `${JSON.stringify({ result: result === undefined ? null : result }, null, 2)}\n`,
@@ -365,6 +392,7 @@ export function createJournal(root: string, options: JournalOptions = {}): Journ
         source,
         ...(executionSource ? { executionSource } : {}),
         args: document.args,
+        callerModel: document.callerModel ?? null,
         result,
         transitions,
         owner: document.owner,

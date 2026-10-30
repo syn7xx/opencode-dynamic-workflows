@@ -9,7 +9,7 @@
 import type { Broker } from "./broker"
 import { createCapabilities } from "./capabilities"
 import { createEngineState, createWorkflowContext, type ReplayPlan, type RunLimits } from "./context"
-import type { EngineHost, HostPermissionRule } from "./host"
+import { formatModel, type EngineHost, type HostModelRef, type HostPermissionRule } from "./host"
 import type { Journal } from "./journal"
 import type { Run, WorkflowIdentity } from "./protocol"
 import { isTerminal, newRun, type RunStore } from "./runs"
@@ -92,6 +92,12 @@ export interface RunWorkflowInput {
   journal?: Journal | null
   runId: string
   parentSessionID: string
+  /**
+   * The model of the session that launched this Run (the caller), for `agent(…, { model: "inherit" })` and a
+   * bare `agent(…, { effort })`. `null`/absent when unknown (a headless/synthetic caller) — inheritance is then
+   * refused with a Run log line. Resolved once by the service from `parentSessionID`.
+   */
+  callerModel?: HostModelRef | null
   location: string
   /** Plugin instance id, recorded as the Run's owner in the journal. */
   instance?: string
@@ -219,6 +225,7 @@ export async function runWorkflow(input: RunWorkflowInput): Promise<RunWorkflowO
               args,
               instance: input.instance ?? "",
               ...(input.executionSource !== undefined ? { executionSource: input.executionSource } : {}),
+              callerModel: formatModel(input.callerModel ?? undefined),
             })
         : undefined,
     )
@@ -239,6 +246,7 @@ export async function runWorkflow(input: RunWorkflowInput): Promise<RunWorkflowO
       workflow: meta.name,
       location: input.location,
       parentSessionID: input.parentSessionID,
+      callerModel: input.callerModel ?? null,
       args,
       state,
       concurrency: meta.concurrency,

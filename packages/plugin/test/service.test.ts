@@ -261,6 +261,82 @@ describe("durable resume — a decomposed Workflow resumes from its own journal"
     const resumed = await svc.resumeRun(started.runId)
     expect((await resumed.done).run.status).toBe("succeeded")
   })
+
+  it("records the caller's model and keeps it across a resume, even when the launching session is gone", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "wf-inherit-"))
+    made.push(dir)
+    await Bun.write(
+      path.join(dir, ".opencode", "workflows", "inherit.ts"),
+      `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"\n` +
+        `export default defineWorkflow({ meta: { name: "inherit", description: "d" }, async run({ agent }) {\n` +
+        `  await agent("a", { label: "a", model: "inherit" })\n` +
+        `  await agent("b", { label: "b", model: "inherit" })\n` +
+        `  return "done"\n` +
+        `} })\n`,
+    )
+    const caller = { providerID: "acme", id: "caller-model" }
+    // The Run fails at Unit "b" so a resume re-runs it LIVE — the case that must still inherit the caller's model.
+    const first = service({
+      location: dir,
+      host: {
+        model: caller,
+        seedSessions: [{ id: "p" }],
+        reply: (call) => (call.text.includes("b") ? { error: "boom" } : { text: "ok" }),
+      },
+    })
+    const started = await first.service.startRun({ name: "inherit", args: {}, parentSessionID: "p" })
+    await started.done
+    // Both Units ran on the caller's model; the model is journaled with the Run.
+    expect(first.host.creates.map((create) => create.model)).toEqual([caller, caller])
+    expect((await first.journal.read(started.runId))?.callerModel).toBe("acme/caller-model")
+
+    // Resume in a fresh process: the launching session is unknown, and the resuming host would resolve a DIFFERENT
+    // model for "p". The journaled caller model must win, so Unit "b" still inherits acme/caller-model.
+    const second = service({
+      location: dir,
+      host: { model: { providerID: "other", id: "some-parent" }, reply: { text: "ok" } },
+    })
+    const resumed = await second.service.resumeRun(started.runId)
+    expect((await resumed.done).run.status).toBe("succeeded")
+    // "a" replayed (no new session); only "b" ran live — on the journaled caller model, not the resuming host's.
+    expect(second.host.creates.map((create) => create.model)).toEqual([caller])
+  })
+
+  it("keeps a headless caller's null across a resume (never resolves a live model into it)", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "wf-headless-resume-"))
+    made.push(dir)
+    await Bun.write(
+      path.join(dir, ".opencode", "workflows", "headless.ts"),
+      `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"\n` +
+        `export default defineWorkflow({ meta: { name: "headless", description: "d" }, async run({ agent }) {\n` +
+        `  return agent("only", { label: "only", model: "inherit" })\n` +
+        `} })\n`,
+    )
+    // A synthetic starter: no session to read, so the caller model is null. Its Unit cannot inherit, and fails
+    // so a resume re-runs it live (the case where a wrong live resolution would show up).
+    const first = service({ location: dir, host: { reply: { error: "boom" } } })
+    const started = await first.service.startRun({ name: "headless", args: {}, parentSessionID: "p" })
+    await started.done
+    expect(first.host.creates[0]!.model).toBeUndefined()
+    expect((await first.journal.read(started.runId))?.callerModel).toBeNull()
+
+    // The resuming host WOULD resolve a model for "p"; the journaled null must win, so the re-run Unit still
+    // inherits nothing — the headless decision is reproduced, not silently upgraded.
+    const second = service({
+      location: dir,
+      host: {
+        model: { providerID: "other", id: "some-parent" },
+        // Seed "p" so a live resolution would yield other/some-parent: without the sentinel, this test's
+        // `model === undefined` assertion would fail — making the null-preservation load-bearing.
+        seedSessions: [{ id: "p" }],
+        reply: { text: "ok" },
+      },
+    })
+    const resumed = await second.service.resumeRun(started.runId)
+    await resumed.done
+    expect(second.host.creates).toHaveLength(1)
+    expect(second.host.creates[0]!.model).toBeUndefined()
+  })
 })
 
 describe("resume — a replayed Unit's receipt reads the original Run's session", () => {
@@ -357,7 +433,7 @@ describe("resume — matching a replayed Unit to the session it was recorded wit
     return {
       read: async (runId: string): Promise<JournalRecord | null> => {
         const run = byId.get(runId)
-        return run ? { run, source: "", args: undefined, transitions: [], owner: null } : null
+        return run ? { run, source: "", args: undefined, callerModel: null, transitions: [], owner: null } : null
       },
     } as unknown as Journal
   }

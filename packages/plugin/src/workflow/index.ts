@@ -144,6 +144,13 @@ export interface AskOptions {
  */
 export type AskFn = (form: AskQuestion | AskQuestion[], options: AskOptions) => Promise<string[][]>
 
+/** A model as the author names it: `providerID` + `modelID` (+ an optional reasoning `variant`). */
+export interface AgentModel {
+  providerID: string
+  modelID: string
+  variant?: string
+}
+
 /**
  * Options for a single {@link AgentFn} call — one Unit of a Run. Generic over the optional `schema`: when a
  * zod schema is supplied, the Unit returns its inferred type instead of text (see {@link AgentFn}).
@@ -158,16 +165,28 @@ export interface AgentOpts<S extends z.ZodType | JsonSchemaInput | undefined = u
   /** Progress group for this Unit. */
   phase?: string
   /**
-   * Model override `{ providerID, modelID }`.
+   * Model override: `{ providerID, modelID, variant? }`, `"provider/model#variant"`, or the sentinel
+   * `"inherit"` (run on the model of the session that launched this Run — see {@link WorkflowContext.model}).
    *
-   * Omit it and the unit runs on the **subagent's own configured model** — the engine passes `agent:` to the
+   * Omit it and the Unit runs on the **subagent's own configured model** — the engine passes `agent:` to the
    * host, which resolves the model from that agent's config, so `subagent` already decides the model. This
    * only overrides that.
    *
-   * Not validated against the host's model list: a typo resolves however the host resolves an unknown id.
+   * The string form must be `"provider/model"` (or `"provider/model#variant"`): a value the engine cannot parse
+   * into a provider and a model is not passed to the host — the Unit falls back to the subagent's model and a Run
+   * log line names the bad value. A well-formed but unknown `provider/model` resolves however the host resolves an
+   * unknown id.
    */
-  model?: { providerID: string; modelID: string; variant?: string } | string
-  /** Reasoning-effort shorthand: sets the model variant (e.g. `"high"`) when `model` names none. */
+  model?: AgentModel | "inherit" | string
+  /**
+   * Reasoning-effort shorthand: the model's `variant` (e.g. `"low"`, `"high"`).
+   *
+   * With an explicit `model` it sets the variant only when that model names none (an explicit
+   * `"provider/model#high"` still wins). Without a `model`, the Unit **inherits the model of the session that
+   * launched this Run** (`ctx.model`) and this effort sets its variant — so effort alone is what "run on my
+   * current model, at this reasoning level" needs. When no caller model is known (a headless/synthetic caller)
+   * the effort cannot be applied and the Run logs a line saying so — it is never silently dropped.
+   */
   effort?: string
   /**
    * Zod schema for a typed result. The Unit gets a `workflow_result` tool whose input is this schema; the engine
@@ -439,6 +458,15 @@ export interface WorkflowContext<A = unknown> extends WorkflowCapabilities {
   worktrees: () => ReadonlyArray<{ unit: string; directory: string; branch: string | null }>
   /** The Run's abort signal. Aborting stops launching queued Units AND interrupts in-flight Unit sessions; each dropped Unit is recorded in {@link errors}. */
   signal: AbortSignal
+  /**
+   * The model of the session that launched this Run, as `"provider/model#variant"` — or `null` when the caller
+   * is not an ordinary session (a headless/synthetic starter).
+   *
+   * This is what `agent(prompt, { model: "inherit" })` resolves to, and what `agent(prompt, { effort })`
+   * with no `model` inherits. Read it when a script wants to reason about the caller itself; otherwise the two
+   * shorthands above already do the inheritance for you. Fixed at Run start, so every Unit sees the same value.
+   */
+  model: string | null
 }
 
 /**
