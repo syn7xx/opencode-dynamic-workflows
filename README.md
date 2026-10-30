@@ -240,6 +240,16 @@ one-use code.
 OpenCode's desktop app shows Workflows too. It is the same engine and the same protocol as the TUI, so there is
 nothing to configure: on OpenCode 2.2+ the GUI half loads beside the TUI half, and both keep working.
 
+<p align="center">
+  <a href="assets/gui-library.webp"><img src="assets/gui-library.webp" alt="The desktop app's Workflows side panel: the run library with saved and recent Runs, their status, phases, Units, tokens, cost and elapsed time, and the actions to run a saved Workflow, start it now or open a Run" width="100%"></a><br>
+  <sub>The Workflows panel: the run library, kept live like the TUI and the web app.</sub>
+</p>
+
+<p align="center">
+  <a href="assets/gui-run.webp"><img src="assets/gui-run.webp" alt="A Run in the desktop app's Workflows panel: its phases, Units and activity, and a Unit's prompt, output and transcript, with the panel's actions to stop, resume, save or delete Unit sessions" width="100%"></a><br>
+  <sub>A Run and a Unit in the panel: the same phases, Units and result as the other surfaces.</sub>
+</p>
+
 - **A side panel.** Open the **Workflows** panel from the side region (or run the **Workflows: open the run
   library** command): the run library, a Run's phases, Units, result and activity, and a Unit's prompt and output —
   the same views as the TUI. Switch a saved Workflow between *run in session* (the agent builds the args) and
