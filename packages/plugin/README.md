@@ -9,6 +9,7 @@
   <a href="https://github.com/syn7xx/opencode-dynamic-workflows/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/syn7xx/opencode-dynamic-workflows/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/syn7xx/opencode-dynamic-workflows/blob/main/LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-9d7cd8"></a>
   <img alt="OpenCode 2.1.0 or newer" src="https://img.shields.io/badge/OpenCode-%E2%89%A5%202.1.0-7fd88f">
+  <img alt="OpenCode Desktop 2.2.0 or newer" src="https://img.shields.io/badge/OpenCode%20Desktop-%E2%89%A5%202.2.0-7fd88f">
   <img alt="macOS, Linux, Windows" src="https://img.shields.io/badge/platforms-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-808080">
   <a href="https://github.com/syn7xx/opencode-dynamic-workflows/blob/main/docs/integrating.md"><img alt="Protocol v1, OpenAPI 3.1" src="https://img.shields.io/badge/protocol-v1%20%C2%B7%20OpenAPI%203.1-56b6c2"></a>
 </p>
@@ -168,6 +169,19 @@ preview arrives in the session that started it (plugin option `notify`).
 - Every durable Workflow also gets its own command, `/<key>`, with namespaces written with `/` (`team:review` becomes
   `/team/review`). The commands follow your Workflow files as they change. Both kinds hand the request to the model,
   which calls `workflow` with the matching `args`.
+
+### Where you run and watch it
+
+One engine, three surfaces — install once, they all come together:
+
+| Surface | How you open it |
+| --- | --- |
+| **TUI** | `/workflows` in the terminal, a session strip and panel |
+| **Desktop app** | a **Workflows** side panel, a session-header strip and a composer badge (OpenCode Desktop 2.2+) |
+| **Browser** | the web app served by the plugin's Gateway, and any app over the [protocol](https://github.com/syn7xx/opencode-dynamic-workflows/blob/main/docs/integrating.md) |
+
+All three show the same Runs, phases, Units and transcripts, and all three can stop a Run, restart a Unit and answer a
+question. Details per surface below.
 
 ### In the TUI
 
