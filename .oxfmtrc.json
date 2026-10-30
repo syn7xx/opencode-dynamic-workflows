@@ -7,6 +7,7 @@
   "ignorePatterns": [
     "**/dist",
     "**/dist-types",
+    "**/dist-types-gui",
     "bun.lock",
     "**/CHANGELOG.md",
     ".release-please-manifest.json",
