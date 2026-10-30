@@ -83,6 +83,19 @@ describe("journal", () => {
     expect(record?.args).toEqual({ a: 1 })
   })
 
+  it("journals the caller model and reads it back, so a resume keeps it", async () => {
+    await journal.begin(baseRun("with-model"), {
+      source: SOURCE,
+      args: null,
+      instance: "i",
+      callerModel: "acme/caller-model#high",
+    })
+    await journal.begin(baseRun("no-model"), { source: SOURCE, args: null, instance: "i" })
+    await journal.flush()
+    expect((await journal.read("with-model"))?.callerModel).toBe("acme/caller-model#high")
+    expect((await journal.read("no-model"))?.callerModel).toBeNull()
+  })
+
   it("skips a torn final line", async () => {
     await journal.begin(baseRun(), { source: SOURCE, args: null, instance: "i" })
     await journal.flush()

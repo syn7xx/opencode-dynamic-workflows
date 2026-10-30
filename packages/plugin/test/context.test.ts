@@ -41,6 +41,77 @@ describe("ctx.agent — text Units", () => {
     expect(host.creates[1]!.agent).toBe("explore")
   })
 
+  test('model: "inherit" runs the Unit on the launching session\'s model', async () => {
+    const callerModel = { providerID: "acme", id: "caller-model" }
+    const { ctx, host } = makeCtx({}, { callerModel })
+    expect(ctx.model).toBe("acme/caller-model")
+    await ctx.agent("x", { model: "inherit" })
+    expect(host.creates[0]!.model).toEqual(callerModel)
+  })
+
+  test("a bare effort inherits the caller's model at that reasoning level (no silent no-op)", async () => {
+    const { ctx, host } = makeCtx({}, { callerModel: { providerID: "acme", id: "caller-model" } })
+    await ctx.agent("x", { effort: "high" })
+    expect(host.creates[0]!.model).toEqual({ providerID: "acme", id: "caller-model", variant: "high" })
+  })
+
+  test("an explicit model still wins over inherited effort inheritance", async () => {
+    const { ctx, host } = makeCtx({}, { callerModel: { providerID: "acme", id: "caller-model" } })
+    await ctx.agent("x", { model: "openai/gpt", effort: "low" })
+    expect(host.creates[0]!.model).toEqual({ providerID: "openai", id: "gpt", variant: "low" })
+  })
+
+  test("an explicit model variant wins over effort", async () => {
+    const { ctx, host } = makeCtx({}, { callerModel: { providerID: "acme", id: "caller-model" } })
+    await ctx.agent("x", { model: "openai/gpt#max", effort: "low" })
+    expect(host.creates[0]!.model).toEqual({ providerID: "openai", id: "gpt", variant: "max" })
+  })
+
+  test("inheriting a caller model that already carries a variant: effort overrides it (no silent no-op)", async () => {
+    const { ctx, host } = makeCtx({}, { callerModel: { providerID: "acme", id: "caller-model", variant: "low" } })
+    expect(ctx.model).toBe("acme/caller-model#low")
+    await ctx.agent("a", { model: "inherit", effort: "high" })
+    await ctx.agent("b", { effort: "max" })
+    expect(host.creates[0]!.model).toEqual({ providerID: "acme", id: "caller-model", variant: "high" })
+    expect(host.creates[1]!.model).toEqual({ providerID: "acme", id: "caller-model", variant: "max" })
+  })
+
+  test("a headless caller (no caller model): inherit and effort are refused and logged, not silent", async () => {
+    const { ctx, host, state } = makeCtx({}, { callerModel: null })
+    expect(ctx.model).toBeNull()
+    await ctx.agent("a", { model: "inherit" })
+    await ctx.agent("b", { effort: "high" })
+    // Neither Unit gets a model: the host resolves the subagent's configured one.
+    expect(host.creates[0]!.model).toBeUndefined()
+    expect(host.creates[1]!.model).toBeUndefined()
+    expect(state.logs).toHaveLength(2)
+    expect(state.logs[0]).toContain('model: "inherit"')
+    expect(state.logs[1]).toContain("effort")
+  })
+
+  test('a headless caller: "inherit" + effort logs ONE line, not two', async () => {
+    const { ctx, state } = makeCtx({}, { callerModel: null })
+    await ctx.agent("x", { model: "inherit", effort: "high" })
+    expect(state.logs).toHaveLength(1)
+    expect(state.logs[0]).toContain('model: "inherit"')
+  })
+
+  test("an unusable model string is reported, not silently turned into inheritance", async () => {
+    const { ctx, host, state } = makeCtx({}, { callerModel: { providerID: "acme", id: "caller-model" } })
+    // No provider slash: `toHostModel` cannot parse it.
+    await ctx.agent("x", { model: "just-a-model", effort: "high" })
+    // Not the caller's model (which inheritance would have substituted), and not a resolved model at all.
+    expect(host.creates[0]!.model).toBeUndefined()
+    expect(state.logs).toHaveLength(1)
+    expect(state.logs[0]).toContain("not a usable model")
+  })
+
+  test("a Unit dropped by a limit does not log a model warning", async () => {
+    const { ctx, state } = makeCtx({}, { callerModel: null, limits: { maxUnits: 0 }, onLimit: () => {} })
+    await ctx.agent("x", { model: "inherit" })
+    expect(state.logs.filter((line) => line.includes('model: "inherit"'))).toHaveLength(0)
+  })
+
   test("Workflow and Unit permission rules precede the engine rules", async () => {
     const { ctx, host } = makeCtx({}, { permissions: [{ action: "edit", resource: "*", effect: "allow" }] })
     await ctx.agent("x", { permissions: [{ action: "shell", resource: "*", effect: "deny" }] })
@@ -244,6 +315,29 @@ describe("ctx.agent — resume replay", () => {
     expect(await ctx.agent("third")).toBe("live")
     expect(host.prompts.map((p) => p.text)).toEqual(["third"])
     expect(units.filter((u) => u.status === "replayed")).toHaveLength(2)
+  })
+
+  test("a replayed Unit never re-logs a model-inheritance warning", async () => {
+    const logs: string[] = []
+    // Only ordinal 1 replays; the second call is a fresh Unit that runs live. With no caller model, the live Unit
+    // warns and the replayed one must not.
+    const replayOnlyFirst: ReplayPlan = {
+      units: new Map([
+        [1, { prompt: "first", status: "succeeded", output: "one", schema: false, subagent: "general" }],
+      ]),
+      answers: [],
+      rerunFailed: true,
+      diverged: false,
+    }
+    const { ctx } = makeCtx(
+      { reply: { text: "live" } },
+      { callerModel: null, replay: replayOnlyFirst, events: { onLog: (m) => logs.push(m) } },
+    )
+    expect(await ctx.agent("first", { model: "inherit" })).toBe("one")
+    expect(logs.filter((line) => line.includes('model: "inherit"'))).toHaveLength(0)
+    // A LIVE Unit under the same conditions does warn — proving the suppression is the replay, not the call.
+    await ctx.agent("fresh", { model: "inherit" })
+    expect(logs.filter((line) => line.includes('model: "inherit"'))).toHaveLength(1)
   })
 
   test("a different prompt at a recorded ordinal diverges and everything after runs live", async () => {

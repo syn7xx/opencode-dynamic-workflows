@@ -223,7 +223,12 @@ describe("audit round 5 — nothing outlives the Run", () => {
 })
 
 describe("nested Workflows — ctx.workflow", () => {
-  async function startWith(parent: string, children: Record<string, string>, host: FakeHostOptions = {}) {
+  async function startWith(
+    parent: string,
+    children: Record<string, string>,
+    host: FakeHostOptions = {},
+    extras: { callerModel?: { providerID: string; id: string; variant?: string } | null } = {},
+  ) {
     const index = createUnitIndex()
     const fake = createFakeHost(index, host)
     const store = createRunStore(project)
@@ -240,6 +245,7 @@ describe("nested Workflows — ctx.workflow", () => {
       store,
       runId,
       parentSessionID: "p",
+      ...(extras.callerModel !== undefined ? { callerModel: extras.callerModel } : {}),
       location: project,
       resolveWorkflow: async (name) => {
         if (!children[name]) throw new Error(`no saved Workflow named "${name}"`)
@@ -265,6 +271,24 @@ describe("nested Workflows — ctx.workflow", () => {
     const run = store.get(runId)!
     expect(run.units.map((u) => [u.label, u.phase, u.ordinal])).toEqual([["kid › greet", "kid › inner", 1]])
     expect(run.logs.join("\n")).toContain("▸ kid")
+  })
+
+  it('a nested Workflow inherits the root caller\'s model for ctx.model and model: "inherit"', async () => {
+    const callerModel = { providerID: "acme", id: "caller-model", variant: "high" }
+    const { promise, host } = await startWith(
+      wf(`const before = ctx.model; const r = await ctx.workflow("kid", {}); return { before, r }`),
+      {
+        kid: child(`const inside = ctx.model; await ctx.agent("x", { label: "a", model: "inherit" }); return inside`),
+      },
+      {},
+      { callerModel },
+    )
+    const { result } = (await promise) as { result: { before: string; r: string } }
+    // ctx.model is the caller's model, in the parent and in the nested child alike.
+    expect(result.before).toBe("acme/caller-model#high")
+    expect(result.r).toBe("acme/caller-model#high")
+    // The child's Unit inherited it (variant preserved).
+    expect(host.creates.at(-1)!.model).toEqual({ providerID: "acme", id: "caller-model", variant: "high" })
   })
 
   it("invalid child args throw into the parent script; nesting deeper throws", async () => {

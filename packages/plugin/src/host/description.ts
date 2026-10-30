@@ -12,11 +12,14 @@ concurrency?, budget?, permissions?, limits? }. run(ctx) returns the result. ctx
   - agent(prompt, opts?) → one Unit (a fresh session with NONE of your context — make the prompt self-contained).
     Resolves to its final text, or with \`schema\` (zod \`z\` or JSON Schema, object at the root) to the validated value.
     A failed Unit resolves to null (recorded in ctx.errors); it never throws.
-    opts: label, phase, subagent ("general" default, "explore" read-only), model ("provider/model#variant"), effort,
+    opts: label, phase, subagent ("general" default, "explore" read-only), model ("provider/model#variant", or
+          "inherit" for the launching session's model), effort (the reasoning variant; with no model it inherits
+          the caller's model at that effort),
           schema, retries, timeoutMs, permissions, location
   - pipeline(items, ...stages) — per-item stage chains, NO barrier between items. The default for multi-stage work.
   - parallel(thunks) — a barrier; use only when a stage needs all results of the previous one.
-  - collect(xs) drops nulls · phase(title) · log(message) · args · budget · signal · errors
+  - collect(xs) drops nulls · phase(title) · log(message) · args · budget · signal · errors · model (the launching
+    session's model, or null for a headless caller — what { model: "inherit" } and a bare { effort } inherit)
   - ask(question, { fallback }) — ask the person; the fallback answers when nobody is watching.
   - $\\\`cmd \\\${value}\\\` / file.read|write / fetch — shell, files, HTTP confined to the project.
   - workflow(name, args) — run a saved Workflow as one step · agent(…, { isolation: "worktree" }) for Units that edit
