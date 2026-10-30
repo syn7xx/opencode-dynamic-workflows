@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/syn7xx/opencode-dynamic-workflows/compare/v0.4.1...v0.5.0) (2026-10-30)
+
+
+### Features
+
+* **workflow:** inherit the caller's model and make effort work alone ([521f068](https://github.com/syn7xx/opencode-dynamic-workflows/commit/521f0684bac1a3b47bb0d4d5c1982dda4be1c18a))
+* **workflow:** inherit the caller's model and make effort work alone ([6849199](https://github.com/syn7xx/opencode-dynamic-workflows/commit/68491998f4d1776eaf0697a17a93aaa7af3bcc23))
+
 ## [0.4.1](https://github.com/syn7xx/opencode-dynamic-workflows/compare/v0.4.0...v0.4.1) (2026-10-29)
 
 
