@@ -177,7 +177,7 @@ export function RunPane(props: {
               data-selected={index() === props.cursor && !props.answer}
               onClick={() => props.onUnitClick(index())}
             >
-              <UnitRow controller={controller} unit={unit} />
+              <UnitRow controller={controller} ctx={ctx} unit={unit} />
             </button>
           )}
         </For>
@@ -205,12 +205,14 @@ export function RunPane(props: {
   )
 }
 
-function UnitRow(props: { controller: WorkflowController; unit: Unit }) {
+function UnitRow(props: { controller: WorkflowController; ctx: PluginContext; unit: Unit }) {
   const look = () => unitStatus(props.unit.status)
+  const replayed = () => props.unit.status === "replayed"
   const figures = () =>
     [
       unitElapsed(props.unit, props.controller.now()),
-      props.unit.status === "replayed" ? "" : formatCost(props.unit.usage.cost),
+      replayed() ? "" : `${formatTokens(totalTokens(props.unit.usage))} ${props.ctx.t("label.tokens")}`,
+      replayed() ? "" : formatCost(props.unit.usage.cost),
     ]
       .filter(Boolean)
       .join(" · ")
