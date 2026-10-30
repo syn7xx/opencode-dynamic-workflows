@@ -27,8 +27,7 @@ import {
   toggle,
   type AnswerState,
   type AnswerStep,
-} from "./answer"
-import { ApprovalPanel } from "./approval"
+} from "../ui/answer"
 import {
   LIBRARY_COLUMNS,
   UNIT_COLUMNS,
@@ -55,7 +54,7 @@ import {
   workflowName,
   wrapLines,
   type Tone,
-} from "./format"
+} from "../ui/format"
 import {
   current,
   cursor,
@@ -69,8 +68,9 @@ import {
   visibleWindow,
   type Nav,
   type View,
-} from "./nav"
-import { sessionEntries, type SyncState } from "./state"
+} from "../ui/nav"
+import { sessionEntries, type SyncState } from "../ui/state"
+import { ApprovalPanel } from "./approval"
 import {
   ACCENT_BORDER,
   Card,

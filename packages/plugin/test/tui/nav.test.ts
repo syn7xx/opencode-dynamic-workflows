@@ -11,7 +11,7 @@ import {
   push,
   setCursor,
   visibleWindow,
-} from "../../src/tui/nav"
+} from "../../src/ui/nav"
 import { entry, run } from "./fixtures"
 
 describe("navigation", () => {

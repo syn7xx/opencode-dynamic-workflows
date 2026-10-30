@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test"
 
 import type { ProtocolEvent, Run } from "../../src/protocol"
 import { runHeader } from "../../src/runs"
-import type { WorkflowApi } from "../../src/tui/api"
-import { WorkflowSync } from "../../src/tui/sync"
+import type { WorkflowApi } from "../../src/ui/api"
+import { WorkflowSync } from "../../src/ui/sync"
 import { LOCATION, entry, event, question, run } from "./fixtures"
 
 /** A fake service: a run table, an event log with `seq`, and counters for what the TUI asked. */
