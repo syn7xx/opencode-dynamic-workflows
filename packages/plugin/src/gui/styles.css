@@ -1,0 +1,343 @@
+/* The Workflows GUI panel: scoped look built on the app's own design tokens (see the Styling rules for GUI plugins).
+   Utilities from the app are not generated for a third-party bundle, so layout and colour live here, over the
+   `--v2-*` custom properties, and every rule is scoped under `[data-component="workflows-panel"]`. */
+
+[data-component="workflows-panel"] {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  font-size: 13px;
+  line-height: var(--line-height-compact, 16px);
+  color: var(--v2-text-text-base);
+  background-color: var(--v2-background-bg-base);
+}
+
+[data-component="workflows-panel"] .wf-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 0.5px solid var(--v2-border-border-muted);
+  flex: 0 0 auto;
+}
+
+[data-component="workflows-panel"] .wf-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--v2-text-text-muted);
+}
+
+[data-component="workflows-panel"] .wf-crumbs b {
+  color: var(--v2-text-text-base);
+  font-weight: 640;
+}
+
+[data-component="workflows-panel"] .wf-crumb-sep {
+  color: var(--v2-text-text-faint);
+}
+
+[data-component="workflows-panel"] .wf-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+[data-component="workflows-panel"] .wf-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 0;
+}
+
+[data-component="workflows-panel"] .wf-empty {
+  padding: 16px;
+  color: var(--v2-text-text-muted);
+}
+
+[data-component="workflows-panel"] .wf-note {
+  padding: 4px 10px;
+  color: var(--v2-text-text-muted);
+}
+
+[data-component="workflows-panel"] .wf-note[data-tone="error"] {
+  color: var(--v2-state-fg-danger);
+}
+
+[data-component="workflows-panel"] .wf-note[data-tone="success"] {
+  color: var(--v2-state-fg-success);
+}
+
+[data-component="workflows-panel"] .wf-group {
+  padding: 8px 10px 2px;
+  color: var(--v2-text-text-muted);
+  font-weight: 600;
+}
+
+[data-component="workflows-panel"] .wf-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+[data-component="workflows-panel"] .wf-row:hover {
+  background-color: var(--v2-overlay-simple-overlay-hover);
+}
+
+[data-component="workflows-panel"] .wf-row[data-selected="true"] {
+  background-color: var(--v2-background-bg-layer-02);
+}
+
+[data-component="workflows-panel"] .wf-row[data-selected="true"] .wf-status {
+  box-shadow: inset 2px 0 0 var(--v2-text-text-accent);
+  padding-inline-start: 6px;
+  margin-inline-start: -8px;
+}
+
+[data-component="workflows-panel"] .wf-status {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+[data-component="workflows-panel"] .wf-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 560;
+}
+
+[data-component="workflows-panel"] .wf-tag {
+  color: var(--v2-text-text-muted);
+  font-weight: 400;
+}
+
+[data-component="workflows-panel"] .wf-figs {
+  flex: 0 0 auto;
+  color: var(--v2-text-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+[data-component="workflows-panel"] .wf-tone-success {
+  color: var(--v2-state-fg-success);
+}
+[data-component="workflows-panel"] .wf-tone-error {
+  color: var(--v2-state-fg-danger);
+}
+[data-component="workflows-panel"] .wf-tone-warning {
+  color: var(--v2-state-fg-warning);
+}
+[data-component="workflows-panel"] .wf-tone-info {
+  color: var(--v2-state-fg-info);
+}
+[data-component="workflows-panel"] .wf-tone-muted {
+  color: var(--v2-text-text-muted);
+}
+
+[data-component="workflows-panel"] .wf-card {
+  margin: 6px 8px;
+  padding: 8px 10px;
+  border: 0.5px solid var(--v2-border-border-muted);
+  border-inline-start: 2px solid var(--v2-border-border-base);
+  border-radius: 6px;
+  background-color: var(--v2-background-bg-layer-01);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+[data-component="workflows-panel"] .wf-card[data-accent="success"] {
+  border-inline-start-color: var(--v2-state-fg-success);
+}
+[data-component="workflows-panel"] .wf-card[data-accent="error"] {
+  border-inline-start-color: var(--v2-state-fg-danger);
+}
+[data-component="workflows-panel"] .wf-card[data-accent="warning"] {
+  border-inline-start-color: var(--v2-state-fg-warning);
+}
+[data-component="workflows-panel"] .wf-card[data-accent="info"] {
+  border-inline-start-color: var(--v2-state-fg-info);
+}
+
+[data-component="workflows-panel"] .wf-card-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+[data-component="workflows-panel"] .wf-card-title {
+  font-weight: 640;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-component="workflows-panel"] .wf-muted {
+  color: var(--v2-text-text-muted);
+}
+
+[data-component="workflows-panel"] .wf-phases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  color: var(--v2-text-text-muted);
+}
+
+[data-component="workflows-panel"] .wf-section {
+  padding: 8px 10px 2px;
+  color: var(--v2-text-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+[data-component="workflows-panel"] .wf-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 10px;
+  border-top: 0.5px solid var(--v2-border-border-muted);
+  flex: 0 0 auto;
+}
+
+[data-component="workflows-panel"] .wf-waiting {
+  margin: 6px 8px;
+  padding: 8px 10px;
+  border: 0.5px solid var(--v2-state-border-warning);
+  border-radius: 6px;
+  background-color: var(--v2-state-bg-warning);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+[data-component="workflows-panel"] .wf-answer {
+  margin: 6px 8px;
+  padding: 10px;
+  border: 0.5px solid var(--v2-border-border-strong);
+  border-radius: 6px;
+  background-color: var(--v2-background-bg-layer-02);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+[data-component="workflows-panel"] .wf-answer .wf-q-head {
+  color: var(--v2-text-text-muted);
+}
+
+[data-component="workflows-panel"] .wf-answer .wf-prompt {
+  white-space: pre-wrap;
+}
+
+[data-component="workflows-panel"] .wf-approval {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* An inline-Workflow approval shows the whole script: keep it scrollable so the buttons stay reachable. */
+[data-component="workflows-panel"] .wf-approval [data-component="code"] {
+  max-height: 40vh;
+  overflow: auto;
+}
+
+[data-component="workflows-panel"] .wf-option {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0.5px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+[data-component="workflows-panel"] .wf-option:hover {
+  background-color: var(--v2-overlay-simple-overlay-hover);
+}
+
+[data-component="workflows-panel"] .wf-option[data-active="true"] {
+  border-color: var(--v2-border-border-focus);
+  background-color: var(--v2-background-bg-layer-03);
+}
+
+[data-component="workflows-panel"] .wf-option .wf-opt-label {
+  flex: 1 1 auto;
+}
+
+[data-component="workflows-panel"] .wf-option .wf-opt-desc {
+  color: var(--v2-text-text-muted);
+}
+
+[data-component="workflows-panel"] .wf-option .wf-check {
+  flex: 0 0 auto;
+  color: var(--v2-state-fg-success);
+}
+
+[data-component="workflows-panel"] .wf-code {
+  font-family: var(--font-family-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 6px 10px;
+}
+
+/* The panel tab's trigger label (the app's icon + title). */
+.wf-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The compact live-runs strip on the session header. */
+[data-component="workflows-strip"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 0 6px;
+  font-size: 12px;
+  line-height: var(--line-height-compact);
+  color: var(--v2-text-text-muted);
+  background: transparent;
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+[data-component="workflows-strip"]:hover {
+  color: var(--v2-text-text-base);
+}
+
+[data-component="workflows-strip"][data-waiting="true"] {
+  color: var(--v2-state-fg-warning);
+}
+
+[data-component="workflows-strip"] .wf-strip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
