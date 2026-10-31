@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import type { FormField } from "@opencode/client"
 
-import { back, confirm, formAnswer, move, pick, rows, startAnswer, submitText, toggle } from "../../src/tui/answer"
+import { back, confirm, formAnswer, move, pick, rows, startAnswer, submitText, toggle } from "../../src/ui/answer"
 import { question } from "./fixtures"
 
 const PERMISSION = question({

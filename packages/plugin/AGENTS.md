@@ -1,8 +1,11 @@
 # opencode-dynamic-workflows — plugin package (OpenCode V2)
 
-One package: the server plugin, the TUI plugin (`dist/tui.js`, precompiled), the authoring API, the protocol,
-the RPC contract, the Gateway and the built web app (`dist/web`). Target: OpenCode **2.1.0+** only. Use V2
-sources only (https://opencode.ai/v2/docs/, the installed `@opencode/*` 2.1.0 types) — never V1 docs.
+One package: the server plugin, the TUI plugin (`dist/tui.js`, precompiled), the GUI plugin
+(`dist/gui-experimental.cjs`, precompiled; the desktop / web app half), the authoring API, the protocol,
+the RPC contract, the Gateway and the built web app (`dist/web`). Target: OpenCode **2.1.0+** for the server and
+TUI halves; the GUI plugin needs **2.2.0+** (the `@opencode/plugin/gui` SDK) and a desktop build that hosts
+`./gui-experimental` bundles. Use V2 sources only (https://opencode.ai/v2/docs/, the installed `@opencode/*`
+types) — never V1 docs.
 
 ## Layout
 
@@ -19,9 +22,15 @@ sources only (https://opencode.ai/v2/docs/, the installed `@opencode/*` 2.1.0 ty
 - `src/host/` — the V2 adapter: `plugin.ts` (tools, hooks, events, RPC, commands), `description.ts`,
   `format.ts`.
 - `src/gateway/` — HTTP + SSE Gateway (process singleton) and token auth.
+- `src/ui/` — the surfaces' shared, host-agnostic core: `state.ts`, `sync.ts`, `api.ts`, `nav.ts`, `format.ts`,
+  `answer.ts`, `cleanup.ts`. Nothing here imports `@opentui/*` or the DOM; the TUI (`src/tui/`) and the GUI
+  (`src/gui/`) both build on it.
 - `src/tui/` — the TUI plugin (built by `script/build-tui.ts`).
-- Root `server.ts`, `rpc.ts`, `tui.*` — directory-plugin entry shims (OpenCode resolves `<dir>/server`,
-  `<dir>/tui`, `<dir>/rpc` by path for directory plugins; packages via exports).
+- `src/gui/` — the GUI plugin: `index.ts` (declarations), `renderer.tsx` (setup), `bundle.tsx` (the
+  `./gui-experimental` entry), `model.ts` (controller), `screen.tsx` + `library.tsx`/`run.tsx`/`unit.tsx`/
+  `answer.tsx` (views), `views.tsx` (panel/strip surfaces), `styles.css`, `i18n/` (built by `script/build-gui.ts`).
+- Root `server.ts`, `rpc.ts`, `tui.*`, `gui-experimental.cjs` — directory-plugin entry shims (OpenCode resolves
+  `<dir>/server`, `<dir>/tui`, `<dir>/rpc`, `<dir>/gui-experimental.cjs` by path for directory plugins; packages via exports).
 
 ## Commands (repo root)
 

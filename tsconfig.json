@@ -5,6 +5,9 @@
       "path": "./packages/plugin"
     },
     {
+      "path": "./packages/plugin/tsconfig.gui.json"
+    },
+    {
       "path": "./packages/web"
     }
   ]

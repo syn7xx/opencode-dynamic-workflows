@@ -12,7 +12,7 @@ import {
   sessionEntries,
   waitingRuns,
   type SyncState,
-} from "../../src/tui/state"
+} from "../../src/ui/state"
 import { LOCATION, entry, event, question, resetSeq, run, unit } from "./fixtures"
 
 function ready(seq = 10, runs = [run()]): SyncState {
@@ -206,6 +206,29 @@ describe("snapshots and selectors", () => {
     const previous = ready(10, [run({ runId: "old" })])
     const next = fromSnapshot({ location: LOCATION, seq: 20, entries: [], runs: [], previous })
     expect(Object.keys(next.runs)).toEqual(["old"])
+  })
+
+  test("a re-read keeps an open Run at full depth (a finished Run never re-hydrates)", () => {
+    // A view opened the Run: full depth.
+    const open = applyRunSnapshot(ready(10, [run({ runId: "r1" })]), run({ runId: "r1", revision: 3 }))
+    expect(open.runs["r1"]!.run).not.toBeNull()
+    // refresh -> resync: the library lists the (now finished) Run at entry depth. It must not be demoted to
+    // `run: null`, or the open view would show "loading" until an event hydrates it — which never comes for a
+    // finished Run.
+    const finished = run({ runId: "r1", revision: 3, status: "succeeded", endedAt: 5_000 })
+    const next = fromSnapshot({
+      location: LOCATION,
+      seq: 20,
+      entries: [entry(finished, false)],
+      runs: [],
+      previous: open,
+    })
+    expect(next.runs["r1"]!.run).not.toBeNull()
+    // The fresh header is merged in: status and end time are current.
+    expect(next.runs["r1"]!.run!.status).toBe("succeeded")
+    expect(next.runs["r1"]!.run!.endedAt).toBe(5_000)
+    // The revision the held Run was current to stands, so a later event is not skipped as a duplicate.
+    expect(next.runs["r1"]!.snapshotRevision).toBe(3)
   })
 
   test("sessionEntries filters by the parent session, newest first", () => {

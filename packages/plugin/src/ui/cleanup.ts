@@ -1,7 +1,7 @@
 /**
- * Retention from the TUI: the server plugin cannot delete sessions, so a Run marked `cleanup: "pending"`
- * waits for a surface with a full client. The TUI deletes the Unit sessions with `client.session.remove` and
- * reports what it deleted with `cleanupRun`. Only ever on an explicit user action.
+ * Retention from a surface with a full client: the server plugin cannot delete sessions, so a Run marked
+ * `cleanup: "pending"` waits for such a surface. The surface deletes the Unit sessions with `client.session.remove`
+ * and reports what it deleted with `cleanupRun`. Only ever on an explicit user action. Shared by the TUI and the GUI.
  */
 import type { LibraryEntry, Run } from "../protocol"
 import { isTerminal } from "../runs"

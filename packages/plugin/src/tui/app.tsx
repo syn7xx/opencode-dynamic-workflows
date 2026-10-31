@@ -11,12 +11,20 @@ import { formatClock } from "../progress"
 import type { PendingInteraction, Run, Unit, WorkflowListing } from "../protocol"
 import { isTerminal } from "../runs"
 import { WorkflowRpc } from "../service/rpc"
-import { formAnswer, findForm } from "./answer"
-import { bindApi, errorText } from "./api"
-import { cleanupPending, cleanupRun, cleanupTargets } from "./cleanup"
-import { savedArgs, savedCommand, shortId, workflowName } from "./format"
-import { anyLive, emptyState, libraryEntries, sessionEntries, waitingRuns, type Effect, type SyncState } from "./state"
-import { WorkflowSync } from "./sync"
+import { formAnswer, findForm } from "../ui/answer"
+import { bindApi, errorText } from "../ui/api"
+import { cleanupPending, cleanupRun, cleanupTargets } from "../ui/cleanup"
+import { savedArgs, savedCommand, shortId, workflowName } from "../ui/format"
+import {
+  anyLive,
+  emptyState,
+  libraryEntries,
+  sessionEntries,
+  waitingRuns,
+  type Effect,
+  type SyncState,
+} from "../ui/state"
+import { WorkflowSync } from "../ui/sync"
 import { LibraryPage, PANEL, RunPanel, SidebarRuns, Strip, type Actions, type Wf } from "./views"
 
 export const ROUTE = "workflows"
