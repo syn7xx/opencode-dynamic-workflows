@@ -327,12 +327,14 @@ export function WorkflowsScreen(props: ScreenProps) {
           </Show>
           <Show when={webLink()}>
             {(link) => (
-              <ctx.ui.IconButton
-                icon="globe"
-                label={ctx.t("action.openBrowser")}
-                variant="ghost-muted"
-                onClick={() => ctx.system.openExternal(link())}
-              />
+              <ctx.ui.Tooltip value={ctx.t("action.openBrowser")}>
+                <ctx.ui.IconButton
+                  icon="globe"
+                  label={ctx.t("action.openBrowser")}
+                  variant="ghost-muted"
+                  onClick={() => ctx.system.openExternal(link())}
+                />
+              </ctx.ui.Tooltip>
             )}
           </Show>
           <ctx.ui.Tooltip value={ctx.t("action.refresh")}>
