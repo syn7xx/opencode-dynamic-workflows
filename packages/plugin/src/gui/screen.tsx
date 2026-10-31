@@ -40,14 +40,25 @@ export interface ScreenProps {
   serverID?: string
   /** The session the panel is scoped to, for a saved Workflow's "run in session" action. */
   originSessionID?: string
+  /**
+   * A Run to open on (and, with `answer`, straight into its pending question). Changing it re-seeds the navigation,
+   * as the TUI's `start` does — how the composer badge jumps to the Run it stands for. `at` makes a repeat of the
+   * same target a distinct change, so re-clicking the badge re-enters answer mode.
+   */
+  start?: Accessor<{ runId?: string; answer?: boolean; at?: number } | undefined>
   onClose: () => void
 }
 
 export function WorkflowsScreen(props: ScreenProps) {
   const ctx = props.ctx
   const controller = props.controller
-  const [nav, setNav] = createSignal<Nav>(initialNav())
+  const initial = () => {
+    const start = props.start?.()
+    return initialNav(start?.runId ? { runId: start.runId } : {})
+  }
+  const [nav, setNav] = createSignal<Nav>(initial())
   const [answer, setAnswer] = createSignal<AnswerState | null>(null)
+  const [autoAnswer, setAutoAnswer] = createSignal(props.start?.()?.answer === true)
   const [typingText, setTypingText] = createSignal("")
   const [note, setNote] = createSignal<{ text: string; tone: Tone } | null>(null)
   const [sending, setSending] = createSignal(false)
@@ -126,6 +137,26 @@ export function WorkflowsScreen(props: ScreenProps) {
       setAnswer(null)
       setNote({ text: ctx.t("ask.settledElsewhere"), tone: "muted" })
     }
+  })
+  // A new `start` (the composer badge jumping to a Run) re-seeds the navigation and enters answer mode when asked.
+  createEffect(
+    on(
+      () => JSON.stringify(props.start?.() ?? {}),
+      () => {
+        setNav(initial())
+        setAnswer(null)
+        setAutoAnswer(props.start?.()?.answer === true)
+      },
+      { defer: true },
+    ),
+  )
+  // `/workflows answer` and the composer badge open a Run straight into answer mode.
+  createEffect(() => {
+    const shown = run()
+    if (!autoAnswer() || !shown) return
+    const first = shown.interactions[0]
+    if (first) beginAnswer(first)
+    setAutoAnswer(false)
   })
 
   function beginAnswer(interaction: PendingInteraction | undefined) {

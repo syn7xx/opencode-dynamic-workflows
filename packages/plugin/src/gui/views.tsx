@@ -26,6 +26,8 @@ export function RunPanelView(props: {
   ctx: PluginContext
   session: Accessor<SessionRefLike>
   controller: Accessor<WorkflowController>
+  /** A Run to open on (and into its pending question), seeded by the composer badge; re-seeds on change. */
+  start?: Accessor<{ runId?: string; answer?: boolean } | undefined>
   /** Close the panel tab (the host owns the tab; this removes it from the strip). */
   onClose: () => void
 }) {
@@ -41,6 +43,7 @@ export function RunPanelView(props: {
           saved={() => props.controller().saved()}
           serverID={props.session().server}
           originSessionID={sessionID}
+          {...(props.start ? { start: props.start } : {})}
           title={props.ctx.t("panel.titleSession")}
           onClose={props.onClose}
         />

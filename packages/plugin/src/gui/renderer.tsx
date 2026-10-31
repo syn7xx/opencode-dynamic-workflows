@@ -7,7 +7,7 @@
  * surface reads the same host-agnostic core in `src/ui/`; this file is only wiring.
  */
 import { Command, ComposerPill, MenuItem, Panel, Slot, Style, type Plugin } from "@opencode/plugin/gui"
-import { onCleanup } from "solid-js"
+import { createSignal, onCleanup, type Accessor } from "solid-js"
 
 import type { PendingInteraction, Run } from "../protocol"
 import { workflowName } from "../ui/format"
@@ -52,19 +52,38 @@ const setup: Plugin.Setup<typeof definition> = (ctx) => {
   // A controller for the window's default location, so commands work before any panel has opened.
   const defaultController = () => controllerFor(ctx.sessions.current()?.directory)
 
+  // What a panel should open on, per session: the composer badge and the answer command seed it, the mounted panel
+  // reads it. `at` (a fresh timestamp) makes re-clicking the same target a distinct change, so it re-enters answer.
+  type Target = { runId?: string; answer?: boolean; at?: number } | undefined
+  const targets = new Map<string, { get: Accessor<Target>; set: (value: Target) => Target }>()
+  const targetEntry = (sessionID: string) => {
+    const existing = targets.get(sessionID)
+    if (existing) return existing
+    const [get, set] = createSignal<Target>(undefined)
+    const entry = { get, set }
+    targets.set(sessionID, entry)
+    return entry
+  }
+  const targetFor = (sessionID: string): Accessor<Target> => targetEntry(sessionID).get
+  const seedTarget = (sessionID: string, target: { runId?: string; answer?: boolean } | undefined): void => {
+    targetEntry(sessionID).set(target ? { ...target, at: Date.now() } : undefined)
+  }
+
   const openPanel = () => {
     const session = ctx.sessions.current()
     if (!session) {
       ctx.toast.show({ title: ctx.t("panel.title"), description: ctx.t("toast.nothingWaiting") })
       return
     }
+    seedTarget(session.id, undefined)
     void controllerFor(session.directory)
     // `select` adds the tab and selects it (keeping the preview tab), and opens the side region.
     ctx.layout.open(`${ctx.id}:${PANEL}`, session, { tab: "select" })
   }
 
-  /** Open the panel on a Run's session: focus that session's tab when it is open, then show the panel there. */
-  const openPanelFor = (sessionID: string) => {
+  /** Open the panel on a Run's session, seeding which Run to show (and enter answer mode). */
+  const openPanelFor = (sessionID: string, target?: { runId?: string; answer?: boolean }) => {
+    seedTarget(sessionID, target)
     const ref = ctx.sessions.list().find((candidate) => candidate.id === sessionID)
     if (!ref) {
       // The Run's session is not an open tab: reveal it as one; the panel follows the route.
@@ -108,6 +127,7 @@ const setup: Plugin.Setup<typeof definition> = (ctx) => {
         ctx={ctx}
         session={() => sessionRef(panel.session)}
         controller={() => controllerFor(panel.session.directory)}
+        start={() => targetFor(panel.session.id)()}
         onClose={() => ctx.layout.close(`${ctx.id}:${PANEL}`, panel.session)}
       />
     ),
@@ -166,7 +186,7 @@ const setup: Plugin.Setup<typeof definition> = (ctx) => {
           icon: "task",
           tone: "warning",
           ...(entry.currentPhase ? { detail: entry.currentPhase } : {}),
-          run: () => openPanelFor(input.session.id),
+          run: () => openPanelFor(input.session.id, { runId: entry.runId, answer: true }),
         })),
       }
     },
@@ -190,7 +210,17 @@ const setup: Plugin.Setup<typeof definition> = (ctx) => {
     },
     group: group(),
     keywords: "workflow answer waiting question",
-    run: openPanel,
+    run: () => {
+      const session = ctx.sessions.current()
+      if (!session) {
+        ctx.toast.show({ title: ctx.t("panel.title"), description: ctx.t("toast.nothingWaiting") })
+        return
+      }
+      const waiting = sessionEntries(controllerFor(session.directory).state(), session.id).find(
+        (entry) => entry.waiting,
+      )
+      openPanelFor(session.id, waiting ? { runId: waiting.runId, answer: true } : undefined)
+    },
   }))
   ctx.add(Command, () => ({
     id: "cleanup",
