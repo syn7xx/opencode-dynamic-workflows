@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/syn7xx/opencode-dynamic-workflows/compare/v0.6.1...v0.6.2) (2026-11-02)
+
+
+### Bug fixes
+
+* **rpc:** route run-scoped calls to the location that owns the Run ([2b8c70d](https://github.com/syn7xx/opencode-dynamic-workflows/commit/2b8c70dafd05a2848407cff4aabf9a41c38069d6))
+
 ## [0.6.1](https://github.com/syn7xx/opencode-dynamic-workflows/compare/v0.6.0...v0.6.1) (2026-11-02)
 
 
