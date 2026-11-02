@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-labelledby="title desc">
   <title id="title">opencode-dynamic-workflows</title>
-  <desc id="desc">A Workflow script fans out to five parallel Units; each turns from running to done at its own pace, and their typed results converge into one result. Next to it: workflows, deterministic multi-agent Workflows for OpenCode.</desc>
+  <desc id="desc">A Workflow script fans out to five parallel Units; each turns from running to done at its own pace, and their typed results converge into one result. Next to it: workflows, deterministic multi-agent Workflows for OpenCode, shown in the TUI, OpenCode Desktop and the web app; the server and TUI halves need OpenCode 2.1.0 or newer, OpenCode Desktop needs 2.2.0 or newer.</desc>
   <defs>
     <filter id="glow" x="-200%" y="-200%" width="500%" height="500%">
       <feGaussianBlur stdDeviation="2.4" result="b"/>
@@ -211,26 +211,32 @@
     <animate attributeName="fill" dur="7s" repeatCount="indefinite" values="#4c4c4c;#4c4c4c;#7fd88f;#7fd88f;#4c4c4c;#4c4c4c" keyTimes="0.0000;0.6057;0.6071;0.9000;0.9429;1.0000"/>
   </circle>
 
-  <!-- Words. -->
+  <!-- Words. Wrapped and shifted up so the column is vertically centred against the animated block on the left (centre y=200). -->
+  <g transform="translate(0 -55)">
   <text x="728" y="130" font-size="14" font-weight="600" letter-spacing="3" fill="#fab283">OPENCODE PLUGIN</text>
   <text x="726" y="188" font-size="54" font-weight="700" letter-spacing="-1" fill="#eeeeee">workflows</text>
   <text x="728" y="232" font-size="23" fill="#b5b5b5">Deterministic multi-agent Workflows for OpenCode.</text>
   <text x="728" y="264" font-size="19" fill="#808080">A TypeScript script fans work out to subagents</text>
   <text x="728" y="290" font-size="19" fill="#808080">and combines their typed results.</text>
 
-  <g transform="translate(728 314)" font-size="14">
-    <rect width="186" height="34" rx="17" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.12"/>
-    <text x="93" y="22" text-anchor="middle" class="mono" fill="#b5b5b5">pipeline · parallel</text>
-    <g transform="translate(198 0)">
-      <rect width="150" height="34" rx="17" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.12"/>
-      <circle cx="20" cy="17" r="4.5" fill="#7fd88f">
+  <g transform="translate(728 314)" font-size="13">
+    <rect width="282" height="34" rx="17" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.12"/>
+    <text x="141" y="22" text-anchor="middle" class="mono" fill="#b5b5b5">pipeline · parallel · loops · if</text>
+    <g transform="translate(294 0)">
+      <rect width="154" height="34" rx="17" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.12"/>
+      <circle cx="16" cy="17" r="4.5" fill="#7fd88f">
         <animate attributeName="opacity" values="1;0.35;1" dur="1.8s" repeatCount="indefinite"/>
       </circle>
-      <text x="34" y="22" fill="#b5b5b5">TUI + web app</text>
+      <text x="29" y="22" fill="#b5b5b5">TUI · GUI · WEB</text>
     </g>
-    <g transform="translate(360 0)">
-      <rect width="148" height="34" rx="17" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.12"/>
-      <text x="74" y="22" text-anchor="middle" fill="#b5b5b5">OpenCode ≥ 2.0.16</text>
+  </g>
+  <g transform="translate(728 356)" font-size="13">
+    <rect width="184" height="34" rx="17" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.12"/>
+    <text x="92" y="22" text-anchor="middle" fill="#b5b5b5">OpenCode TUI ≥ 2.1.0</text>
+    <g transform="translate(196 0)">
+      <rect width="216" height="34" rx="17" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.12"/>
+      <text x="108" y="22" text-anchor="middle" fill="#b5b5b5">OpenCode Desktop ≥ 2.2.0</text>
     </g>
+  </g>
   </g>
 </svg>
