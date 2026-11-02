@@ -219,7 +219,8 @@
   border: 0.5px solid var(--v2-border-border-muted);
   border-radius: 999px;
   background: transparent;
-  color: inherit;
+  /* No `color` here: a chip's colour comes from its tone class (`.wf-tone-*`), which has the same
+     specificity as this rule — declaring `color` would win on source order and erase the tone. */
   font: inherit;
   cursor: pointer;
 }
