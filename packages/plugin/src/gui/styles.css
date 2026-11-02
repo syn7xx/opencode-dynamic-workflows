@@ -209,8 +209,29 @@
 [data-component="workflows-panel"] .wf-phases {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px 8px;
+  align-items: center;
+  gap: 4px 6px;
   color: var(--v2-text-text-muted);
+}
+
+[data-component="workflows-panel"] .wf-phase-chip {
+  padding: 1px 8px;
+  border: 0.5px solid var(--v2-border-border-muted);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+[data-component="workflows-panel"] .wf-phase-chip:hover {
+  border-color: var(--v2-border-border-accent);
+}
+
+[data-component="workflows-panel"] .wf-phase-chip[data-selected] {
+  border-color: var(--v2-border-border-accent);
+  background: var(--v2-background-bg-overlay);
+  color: var(--v2-text-text-primary);
 }
 
 [data-component="workflows-panel"] .wf-section {

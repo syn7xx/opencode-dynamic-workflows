@@ -37,6 +37,7 @@ export default {
   "action.startNow": "Şimdi başlat",
   "action.dismiss": "Yoksay",
   "action.choose": "Seç",
+  "action.showAllUnits": "Tüm Unit'leri göster",
 
   "section.units": "Unit'ler",
   "section.result": "Sonuç",

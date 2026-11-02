@@ -37,6 +37,7 @@ export default {
   "action.startNow": "立即啟動",
   "action.dismiss": "略過",
   "action.choose": "選擇",
+  "action.showAllUnits": "顯示所有單元",
 
   "section.units": "單元",
   "section.result": "結果",

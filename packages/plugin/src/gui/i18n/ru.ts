@@ -37,6 +37,7 @@ export default {
   "action.startNow": "Запустить сейчас",
   "action.dismiss": "Отклонить",
   "action.choose": "Выбрать",
+  "action.showAllUnits": "Показать все юниты",
 
   "section.units": "Юниты",
   "section.result": "Результат",

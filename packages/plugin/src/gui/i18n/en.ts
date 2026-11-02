@@ -33,6 +33,7 @@ export default {
   "action.startNow": "Start now",
   "action.dismiss": "Dismiss",
   "action.choose": "Choose",
+  "action.showAllUnits": "Show all Units",
 
   "section.units": "Units",
   "section.result": "Result",

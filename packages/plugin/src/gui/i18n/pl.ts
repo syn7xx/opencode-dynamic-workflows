@@ -37,6 +37,7 @@ export default {
   "action.startNow": "Uruchom teraz",
   "action.dismiss": "Odrzuć",
   "action.choose": "Wybierz",
+  "action.showAllUnits": "Pokaż wszystkie unity",
 
   "section.units": "Unity",
   "section.result": "Wynik",

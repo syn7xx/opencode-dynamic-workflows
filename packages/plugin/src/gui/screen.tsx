@@ -58,6 +58,7 @@ export function WorkflowsScreen(props: ScreenProps) {
   }
   const [nav, setNav] = createSignal<Nav>(initial())
   const [answer, setAnswer] = createSignal<AnswerState | null>(null)
+  const [phase, setPhase] = createSignal<string | null>(null)
   const [autoAnswer, setAutoAnswer] = createSignal(props.start?.()?.answer === true)
   const [typingText, setTypingText] = createSignal("")
   const [note, setNote] = createSignal<{ text: string; tone: Tone } | null>(null)
@@ -73,6 +74,12 @@ export function WorkflowsScreen(props: ScreenProps) {
     return runId ? controller.state().runs[runId] : undefined
   }
   const run = () => slot()?.run ?? null
+  // The Unit list, filtered by the clicked phase chip (null = all). The cursor navigates this same list.
+  const units = () => {
+    const list = run()?.units ?? []
+    const selected = phase()
+    return selected ? list.filter((unit) => unit.phase === selected) : list
+  }
   const entries = createMemo(() =>
     filterEntries(props.entries(), nav().filter).toSorted((a, b) => Number(b.live) - Number(a.live)),
   )
@@ -84,7 +91,6 @@ export function WorkflowsScreen(props: ScreenProps) {
     const index = cursor(nav(), libraryRows()) - entries().length
     return index >= 0 ? saved()[index] : undefined
   }
-  const units = () => run()?.units ?? []
   const viewUnit = () => {
     const v = view()
     return v.kind === "unit" ? run()?.units.find((unit) => unit.unitId === v.unitId) : undefined
@@ -121,6 +127,7 @@ export function WorkflowsScreen(props: ScreenProps) {
   // A Run view reads the Run in full (and its activity) when it opens.
   createEffect(
     on(viewRunId, (runId) => {
+      setPhase(null)
       if (runId) void controller.open(runId).catch(() => {})
     }),
   )
@@ -384,6 +391,9 @@ export function WorkflowsScreen(props: ScreenProps) {
                 run={run()!}
                 activity={slot()?.activity ?? null}
                 cursor={cursor(nav(), units().length)}
+                units={units()}
+                phase={phase()}
+                onPhase={setPhase}
                 answer={answerBindings()}
                 onAnswer={() => beginAnswer(run()?.interactions[0])}
                 onUnitClick={clickUnit}

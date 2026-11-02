@@ -29,6 +29,11 @@ export function RunPane(props: {
   run: Run
   activity: readonly { message: string; kind: string; time: number }[] | null
   cursor: number
+  /** The Units to list, already filtered by the selected phase. */
+  units: readonly Unit[]
+  /** The phase whose Units are shown (`null` = all); clicking a phase chip toggles it. */
+  phase: string | null
+  onPhase: (phase: string | null) => void
   /** The answer session state, or null while the Run is not being answered. */
   answer: AnswerBindings | null
   onAnswer: () => void
@@ -39,6 +44,8 @@ export function RunPane(props: {
   const controller = props.controller
   const look = () => runStatus(props.run)
   const phases = createMemo(() => phaseLine(props.run))
+  // A clicked phase chip toggles the Unit filter; clicking the active one clears it.
+  const selectPhase = (name: string) => props.onPhase(props.phase === name ? null : name)
   const figures = () =>
     [
       formatElapsed(elapsedOf(props.run, controller.now())),
@@ -71,14 +78,22 @@ export function RunPane(props: {
           <div class="wf-phases">
             <For each={phases()}>
               {(part, index) => (
-                <span class={toneClass(part.tone)}>
+                <button
+                  type="button"
+                  class={`wf-phase-chip ${toneClass(part.tone)}`}
+                  data-selected={props.phase === props.run.phases[index()] || undefined}
+                  title={part.text}
+                  onClick={() => selectPhase(props.run.phases[index()]!)}
+                >
                   {part.text}
-                  <Show when={index() < phases().length - 1}>
-                    <span class="wf-crumb-sep"> ── </span>
-                  </Show>
-                </span>
+                </button>
               )}
             </For>
+            <Show when={props.phase}>
+              <button type="button" class="wf-phase-chip wf-muted" onClick={() => props.onPhase(null)}>
+                {ctx.t("action.showAllUnits")}
+              </button>
+            </Show>
           </div>
         </Show>
         <Show when={props.run.budget.total !== null}>
@@ -164,14 +179,17 @@ export function RunPane(props: {
 
       <div class="wf-section">
         {ctx.t("section.units")}{" "}
-        {props.run.units.length ? (
+        {props.units.length ? (
           <span class="wf-muted">
-            {ctx.t("label.unitsProgress", { settled: settledUnits(props.run), total: props.run.units.length })}
+            {ctx.t("label.unitsProgress", {
+              settled: settledUnits({ units: [...props.units] }),
+              total: props.units.length,
+            })}
           </span>
         ) : null}
       </div>
-      <Show when={props.run.units.length > 0} fallback={<div class="wf-empty">{ctx.t("units.none")}</div>}>
-        <For each={props.run.units}>
+      <Show when={props.units.length > 0} fallback={<div class="wf-empty">{ctx.t("units.none")}</div>}>
+        <For each={props.units}>
           {(unit, index) => (
             <button
               type="button"

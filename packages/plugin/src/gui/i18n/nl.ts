@@ -36,6 +36,7 @@ export default {
   "action.startNow": "Nu starten",
   "action.dismiss": "Negeren",
   "action.choose": "Kiezen",
+  "action.showAllUnits": "Alle Units tonen",
 
   "section.units": "Units",
   "section.result": "Resultaat",

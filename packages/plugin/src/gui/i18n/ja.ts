@@ -37,6 +37,7 @@ export default {
   "action.startNow": "今すぐ開始",
   "action.dismiss": "却下",
   "action.choose": "選択",
+  "action.showAllUnits": "すべての Unit を表示",
 
   "section.units": "Units",
   "section.result": "結果",
