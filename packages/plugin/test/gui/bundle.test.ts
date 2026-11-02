@@ -36,18 +36,21 @@ test.skipIf(!existsSync(bundle))("the built GUI bundle is a valid Plugin.define"
   new Function("exports", "require", "module", code)(module.exports, requireShim, module)
 
   const definition = module.exports.default as
-    | { setup?: unknown; i18n?: { en?: Record<string, string>; ru?: Record<string, string> } }
+    | { setup?: unknown; i18n?: Record<string, Record<string, string>> }
     | undefined
   expect(definition).toBeDefined()
   expect(typeof definition!.setup).toBe("function")
-  expect(typeof definition!.i18n?.en).toBe("object")
   // Every key the screen reads must exist, so a missing key cannot slip out untranslated.
+  const en = definition!.i18n!.en!
+  expect(typeof en).toBe("object")
   for (const key of ["panel.title", "command.open", "action.answer", "toast.started"]) {
-    expect(typeof definition!.i18n!.en![key]).toBe("string")
+    expect(typeof en[key]).toBe("string")
   }
-  // Russian is a full catalog: every English key has a Russian message (English still backs any it lacked).
-  // It may carry extra keys — the plural categories Russian needs beyond English's `one`/`other`.
-  const ru = definition!.i18n!.ru!
-  expect(typeof ru).toBe("object")
-  for (const key of Object.keys(definition!.i18n!.en!)) expect(typeof ru[key]).toBe("string")
+  // English stays the fallback the host merges under each locale, so a listed locale must cover every English key
+  // (it may carry extra keys — the plural categories a language needs beyond English's `one`/`other`).
+  for (const [locale, messages] of Object.entries(definition!.i18n!)) {
+    if (locale === "en") continue
+    expect(typeof messages).toBe("object")
+    for (const key of Object.keys(en)) expect(typeof messages[key]).toBe("string")
+  }
 })
