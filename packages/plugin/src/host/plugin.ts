@@ -35,6 +35,7 @@ import { configDirs } from "../registry"
 import { QUESTION_INSTRUCTION, RESULT_INSTRUCTION, RESULT_INSTRUCTION_REPAIR } from "../runner"
 import { createRunStore, elideEvent, isTerminal } from "../runs"
 import { parseConfig, type PluginConfig } from "../service/config"
+import { locateServiceForRun } from "../service/locate"
 import { WorkflowRpc } from "../service/rpc"
 import { WorkflowService, argsSchemaOf } from "../service/service"
 import {
@@ -710,51 +711,78 @@ export async function setup(ctx: Context): Promise<() => Promise<void>> {
     }
   }
 
+  /**
+   * The service that owns `runId`, for run-scoped calls. A surface is bound to its OWN location (the GUI panel to
+   * the session's directory, which may be a worktree that is a different OpenCode location from the Run's), so a
+   * run-scoped call must reach the instance that owns the Run — where its broker and stop handles live — not the one
+   * the call landed on. Falls back to this instance when no location claims the Run, so the error reads as before.
+   */
+  const serviceForRun = async (runId: string): Promise<WorkflowService> => (await locateServiceForRun(runId)) ?? service
+
   const rpc = await ctx.rpc.register(WorkflowRpc, {
     info: (_input, c) => guard(c.error as never, () => service.info()),
     listRuns: (input, c) => guard(c.error as never, async () => ({ runs: await service.listRuns(input) })),
-    getRun: (input, c) => guard(c.error as never, () => service.getRun(input.runId)),
+    getRun: (input, c) => guard(c.error as never, async () => (await serviceForRun(input.runId)).getRun(input.runId)),
     getUnit: (input, c) =>
-      guard(c.error as never, async () => ({ unit: await service.getUnit(input.runId, input.unitId) })),
-    getResult: (input, c) => guard(c.error as never, () => service.getResult(input.runId)),
-    getTranscript: (input, c) => guard(c.error as never, () => service.getTranscript(input.runId, input.unitId)),
+      guard(c.error as never, async () => ({
+        unit: await (await serviceForRun(input.runId)).getUnit(input.runId, input.unitId),
+      })),
+    getResult: (input, c) =>
+      guard(c.error as never, async () => (await serviceForRun(input.runId)).getResult(input.runId)),
+    getTranscript: (input, c) =>
+      guard(c.error as never, async () => (await serviceForRun(input.runId)).getTranscript(input.runId, input.unitId)),
     getActivity: (input, c) =>
-      guard(c.error as never, async () => ({ entries: await service.getActivity(input.runId) })),
+      guard(c.error as never, async () => ({
+        entries: await (await serviceForRun(input.runId)).getActivity(input.runId),
+      })),
     listWorkflows: (_input, c) => guard(c.error as never, () => service.listWorkflows()),
     startRun: (input, c) =>
       guard(c.error as never, async () => {
         const started = await service.startRun(input, { background: true, surface: "the TUI" })
         return { runId: started.runId }
       }),
-    stopRun: (input, c) => guard(c.error as never, () => (service.stopRun(input.runId), { ok: true as const })),
+    stopRun: (input, c) =>
+      guard(c.error as never, async () => {
+        ;(await serviceForRun(input.runId)).stopRun(input.runId)
+        return { ok: true as const }
+      }),
     stopUnit: (input, c) =>
-      guard(c.error as never, () => (service.stopUnit(input.runId, input.unitId), { ok: true as const })),
+      guard(c.error as never, async () => {
+        ;(await serviceForRun(input.runId)).stopUnit(input.runId, input.unitId)
+        return { ok: true as const }
+      }),
     restartUnit: (input, c) =>
-      guard(
-        c.error as never,
-        async () => (await service.restartUnit(input.runId, input.unitId), { ok: true as const }),
-      ),
+      guard(c.error as never, async () => {
+        await (await serviceForRun(input.runId)).restartUnit(input.runId, input.unitId)
+        return { ok: true as const }
+      }),
     resumeRun: (input, c) =>
       guard(c.error as never, async () => ({
         runId: (
-          await service.resumeRun(input.runId, input.rerunFailed ?? true, { background: true, surface: "the TUI" })
+          await (
+            await serviceForRun(input.runId)
+          ).resumeRun(input.runId, input.rerunFailed ?? true, {
+            background: true,
+            surface: "the TUI",
+          })
         ).runId,
       })),
     replyInteraction: (input, c) =>
-      guard(
-        c.error as never,
-        async () => (
-          await service.replyInteraction(input.runId, input.interactionId, input.answers),
-          { ok: true as const }
-        ),
-      ),
+      guard(c.error as never, async () => {
+        await (await serviceForRun(input.runId)).replyInteraction(input.runId, input.interactionId, input.answers)
+        return { ok: true as const }
+      }),
     cancelInteraction: (input, c) =>
-      guard(
-        c.error as never,
-        async () => (await service.cancelInteraction(input.runId, input.interactionId), { ok: true as const }),
+      guard(c.error as never, async () => {
+        await (await serviceForRun(input.runId)).cancelInteraction(input.runId, input.interactionId)
+        return { ok: true as const }
+      }),
+    saveRun: (input, c) =>
+      guard(c.error as never, async () => (await serviceForRun(input.runId)).saveRun(input.runId, input.name)),
+    cleanupRun: (input, c) =>
+      guard(c.error as never, async () =>
+        (await serviceForRun(input.runId)).cleanupRun(input.runId, input.deleted ?? []),
       ),
-    saveRun: (input, c) => guard(c.error as never, () => service.saveRun(input.runId, input.name)),
-    cleanupRun: (input, c) => guard(c.error as never, () => service.cleanupRun(input.runId, input.deleted ?? [])),
     attach: (input, c) =>
       guard(
         c.error as never,
