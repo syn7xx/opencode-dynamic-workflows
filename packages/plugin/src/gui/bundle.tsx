@@ -8,6 +8,7 @@
 import { Plugin } from "@opencode/plugin/gui"
 
 import en from "./i18n/en"
+import ru from "./i18n/ru"
 import setup from "./renderer"
 
-export default Plugin.define({ i18n: { en }, setup })
+export default Plugin.define({ i18n: { en, ru }, setup })

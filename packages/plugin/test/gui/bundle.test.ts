@@ -35,7 +35,9 @@ test.skipIf(!existsSync(bundle))("the built GUI bundle is a valid Plugin.define"
   // The host evaluates the bundle's text with its own `require`; mirror that here.
   new Function("exports", "require", "module", code)(module.exports, requireShim, module)
 
-  const definition = module.exports.default as { setup?: unknown; i18n?: { en?: Record<string, string> } } | undefined
+  const definition = module.exports.default as
+    | { setup?: unknown; i18n?: { en?: Record<string, string>; ru?: Record<string, string> } }
+    | undefined
   expect(definition).toBeDefined()
   expect(typeof definition!.setup).toBe("function")
   expect(typeof definition!.i18n?.en).toBe("object")
@@ -43,4 +45,9 @@ test.skipIf(!existsSync(bundle))("the built GUI bundle is a valid Plugin.define"
   for (const key of ["panel.title", "command.open", "action.answer", "toast.started"]) {
     expect(typeof definition!.i18n!.en![key]).toBe("string")
   }
+  // Russian is a full catalog: every English key has a Russian message (English still backs any it lacked).
+  // It may carry extra keys — the plural categories Russian needs beyond English's `one`/`other`.
+  const ru = definition!.i18n!.ru!
+  expect(typeof ru).toBe("object")
+  for (const key of Object.keys(definition!.i18n!.en!)) expect(typeof ru[key]).toBe("string")
 })

@@ -1,0 +1,111 @@
+/**
+ * The Workflows GUI plugin's Russian copy. English (`./en.ts`) is the source and the fallback: a key this file
+ * lacks is read from English. Pick the plural category with CLDR's rules for `ru` (`one`/`few`/`many`), which
+ * `ctx.plural` selects by `count`; `other` is the safety net the SDK falls back to.
+ */
+export default {
+  "panel.title": "Воркфлоу",
+  "panel.titleSession": "Воркфлоу (эта сессия)",
+  "panel.empty": "Запусков пока нет. Попросите агента написать воркфлоу или сохраните его в .opencode/workflows/.",
+  "panel.emptyFilter": "Ничего не подходит под этот фильтр.",
+  "panel.loading": "Загрузка…",
+
+  "group.live": "Активные",
+  "group.recent": "Недавние",
+  "group.saved": "Сохранённые",
+
+  "command.open": "Воркфлоу: открыть список запусков",
+  "command.openPanel": "Воркфлоу: открыть панель запусков",
+  "command.answer": "Воркфлоу: ответить на ожидающий вопрос",
+  "command.cleanup": "Воркфлоу: удалить сессии юнитов завершённых запусков",
+  "command.pair": "Воркфлоу: подключить браузер (веб-приложение)",
+
+  "action.refresh": "Обновить",
+  "action.openBrowser": "Открыть в браузере",
+  "action.filter": "Фильтр",
+  "action.answer": "Ответить",
+  "action.stop": "Остановить",
+  "action.resume": "Возобновить",
+  "action.save": "Сохранить",
+  "action.deleteUnits": "Удалить сессии юнитов",
+  "action.stopUnit": "Остановить юнит",
+  "action.restartUnit": "Перезапустить юнит",
+  "action.transcript": "Транскрипт",
+  "action.parentSession": "Родительская сессия",
+  "action.back": "Назад",
+  "action.runInSession": "Запустить в сессии",
+  "action.startNow": "Запустить сейчас",
+  "action.dismiss": "Отклонить",
+  "action.choose": "Выбрать",
+
+  "section.units": "Юниты",
+  "section.result": "Результат",
+  "section.activity": "Активность",
+  "section.prompt": "Промпт",
+  "section.output": "Вывод",
+
+  "label.saved": "сохранён",
+  "label.inline": "встроенный",
+  "label.needsArgs": "нужны аргументы",
+  "label.unit": "юнит",
+  "label.units": "юнитов",
+  "label.tokens": "ток",
+  "label.errors": "ошибок: {{count}}",
+  "label.budget": "бюджет {{meter}} {{spent}} из {{total}}",
+
+  "units.none": "Юнитов пока нет.",
+  "unit.notStarted": "не начат",
+  "unit.typed": "типизирован",
+  "unit.noOutput": "Нет вывода.",
+
+  "ask.typeOwn": "Введите свой ответ",
+  "ask.placeholder": "Введите ответ",
+  "ask.sending": "Отправка…",
+  "ask.settledElsewhere": "На этот вопрос уже ответили в другом месте.",
+  "ask.answerSent": "Ответ отправлен.",
+  "ask.dismissed": "Отклонено; запуск продолжится без ответа.",
+  "ask.kindPermission": "Разрешение",
+  "ask.kindForm": "Вопрос (форма OpenCode)",
+  "ask.kindScript": "Вопрос от воркфлоу",
+  "ask.kindUnit": "Вопрос от юнита",
+  "ask.kindApprovalRun": "Запустить этот встроенный воркфлоу?",
+  "ask.kindApprovalSave": "Сохранить этот встроенный воркфлоу?",
+  "ask.approvalMeta": "{{size}} · sha256 {{sha}}…",
+  "ask.notSent": "Не отправлено: {{error}}",
+  "ask.notDismissed": "Не отклонено: {{error}}",
+  "ask.noResource": "(нет ресурса)",
+
+  "confirm.deleteTitle": "Удалить сессии юнитов?",
+  "confirm.deleteBody":
+    "Удалить {{count}} сессий юнитов для {{name}}? Их транскрипты исчезнут из OpenCode; запись запуска останется.",
+  "confirm.delete": "Удалить",
+
+  "toast.started": "Запущен {{name}}.",
+  "toast.resumed": "{{name}} возобновлён: завершённые юниты воспроизводятся, остальные выполняются заново.",
+  "toast.saved": "Сохранён как «{{key}}».",
+  "toast.sent": "Команда /{{command}} отправлена в сессию.",
+  "toast.cleaned": "Очищено запусков: {{runs}}; удалено сессий: {{deleted}}.",
+  "toast.waiting": "{{name}} ждёт вас — откройте панель «Воркфлоу».",
+  "toast.finished": "{{name}}: {{status}}.",
+  "toast.noSaved": "Нет завершённых запусков, отмеченных для очистки.",
+  "toast.nothingWaiting": "Ни один воркфлоу не ждёт ответа.",
+  "toast.noSessions": "У этого запуска нет сессий юнитов для удаления.",
+  "toast.notification": "Воркфлоу {{name}}",
+  "toast.needsYou": "ждёт вас",
+
+  "pill.title": "Воркфлоу ждут вас",
+  "pill.waiting.one": "{{count}} ждёт",
+  "pill.waiting.few": "{{count}} ждут",
+  "pill.waiting.many": "{{count}} ждут",
+  "pill.waiting.other": "{{count}} ждут",
+
+  "saved.runTitle": "Запуск {{key}}",
+  "saved.runDescription": "{{description}}\nОпишите, что нужно: агент соберёт аргументы и запустит.",
+  "saved.runPlaceholder": "Что нужно сделать?",
+  "saved.saveDescription": "Запишет скрипт запуска в .opencode/workflows/<name>.ts",
+  "saved.failed": "{{action}}: {{error}}",
+
+  "pair.title": "Подключение браузера",
+  "pair.body":
+    "Откройте {{url}} на другом устройстве и введите код:\n\n    {{code}}\n\nОдноразовый; истекает в {{time}}.",
+} as const
