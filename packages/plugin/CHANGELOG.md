@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.3](https://github.com/syn7xx/opencode-dynamic-workflows/compare/v0.6.2...v0.6.3) (2026-11-02)
+
+
+### Bug fixes
+
+* **gui:** restore phase chip tone colours in the Run view ([5464839](https://github.com/syn7xx/opencode-dynamic-workflows/commit/5464839e35dc1de965c0742f6e84ff0b282956bf))
+
 ## [0.6.2](https://github.com/syn7xx/opencode-dynamic-workflows/compare/v0.6.1...v0.6.2) (2026-11-02)
 
 
