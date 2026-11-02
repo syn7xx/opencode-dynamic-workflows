@@ -27,8 +27,7 @@ import {
   toggle,
   type AnswerState,
   type AnswerStep,
-} from "./answer"
-import { ApprovalPanel } from "./approval"
+} from "../ui/answer"
 import {
   LIBRARY_COLUMNS,
   UNIT_COLUMNS,
@@ -55,7 +54,7 @@ import {
   workflowName,
   wrapLines,
   type Tone,
-} from "./format"
+} from "../ui/format"
 import {
   current,
   cursor,
@@ -64,13 +63,15 @@ import {
   initialNav,
   moveCursor,
   pop,
+  popTo,
   push,
   setCursor,
   visibleWindow,
   type Nav,
   type View,
-} from "./nav"
-import { sessionEntries, type SyncState } from "./state"
+} from "../ui/nav"
+import { sessionEntries, type SyncState } from "../ui/state"
+import { ApprovalPanel } from "./approval"
 import {
   ACCENT_BORDER,
   Card,
@@ -373,6 +374,11 @@ export function WorkflowsScreen(props: ScreenProps) {
     const previous = pop(nav())
     if (previous) setNav(previous)
     else props.onExit()
+  }
+
+  /** Jump back to a breadcrumb: drop every view above it, keeping the one clicked. */
+  function goToDepth(depth: number) {
+    setNav(popTo(nav(), depth))
   }
 
   function answerFirst() {
@@ -684,19 +690,30 @@ export function WorkflowsScreen(props: ScreenProps) {
   return (
     <box flexDirection="column" width="100%" height="100%" paddingLeft={1} paddingRight={1}>
       <box flexDirection="row" justifyContent="space-between" flexShrink={0}>
-        <text fg={th().text.muted}>
-          <span style={{ fg: th().background.action.primary.focused }}>⟡ </span>
+        <box flexDirection="row" alignItems="center" flexShrink={1} overflow="hidden">
+          <text fg={th().background.action.primary.focused}>⟡ </text>
           <For each={crumbs()}>
             {(part, index) => (
               <>
-                {index() > 0 ? " › " : ""}
-                <span style={{ fg: index() === crumbs().length - 1 ? th().text.base : th().text.muted }}>
-                  {index() === crumbs().length - 1 ? <b>{part}</b> : part}
-                </span>
+                <Show when={index() > 0}>
+                  <text fg={th().text.muted}> › </text>
+                </Show>
+                <Show
+                  when={index() === crumbs().length - 1}
+                  fallback={
+                    <text fg={th().text.muted} onMouseUp={() => goToDepth(index() + 1)}>
+                      {part}
+                    </text>
+                  }
+                >
+                  <text fg={th().text.base}>
+                    <b>{part}</b>
+                  </text>
+                </Show>
               </>
             )}
           </For>
-        </text>
+        </box>
         <box flexDirection="row" gap={3} flexShrink={0}>
           <Show when={view().kind === "library" && innerWidth() > 60}>
             <text fg={th().text.muted}>{libraryCounts()}</text>

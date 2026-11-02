@@ -1,0 +1,109 @@
+/**
+ * The Workflows GUI plugin's Italian copy. English (`./en.ts`) is the source and the fallback: a key this file lacks
+ * is read from English. Italian uses `one`/`other` in practice (the CLDR `many` only applies to millions).
+ */
+export default {
+  "panel.title": "Workflow",
+  "panel.titleSession": "Workflow (questa sessione)",
+  "panel.empty":
+    "Nessuna esecuzione. Chiedi all'agente di scrivere un workflow, oppure salvalo in .opencode/workflows/.",
+  "panel.emptyFilter": "Nessun elemento corrisponde a questo filtro.",
+  "panel.loading": "Caricamento…",
+
+  "group.live": "Attive",
+  "group.recent": "Recenti",
+  "group.saved": "Salvati",
+
+  "command.open": "Workflow: apri la libreria delle esecuzioni",
+  "command.openPanel": "Workflow: apri il pannello delle esecuzioni",
+  "command.answer": "Workflow: rispondi a una domanda in attesa",
+  "command.cleanup": "Workflow: elimina le sessioni Unit delle esecuzioni concluse",
+  "command.pair": "Workflow: abbina un browser (app web)",
+
+  "action.refresh": "Aggiorna",
+  "action.openBrowser": "Apri nel browser",
+  "action.filter": "Filtro",
+  "action.answer": "Rispondi",
+  "action.stop": "Interrompi",
+  "action.resume": "Riprendi",
+  "action.save": "Salva",
+  "action.deleteUnits": "Elimina le sessioni Unit",
+  "action.stopUnit": "Interrompi Unit",
+  "action.restartUnit": "Riavvia Unit",
+  "action.transcript": "Trascrizione",
+  "action.parentSession": "Sessione principale",
+  "action.back": "Indietro",
+  "action.runInSession": "Esegui nella sessione",
+  "action.startNow": "Avvia ora",
+  "action.dismiss": "Ignora",
+  "action.choose": "Scegli",
+
+  "section.units": "Unit",
+  "section.result": "Risultato",
+  "section.activity": "Attività",
+  "section.prompt": "Prompt",
+  "section.output": "Output",
+
+  "label.saved": "salvato",
+  "label.inline": "inline",
+  "label.needsArgs": "richiede argomenti",
+  "label.unit": "unit",
+  "label.units": "unit",
+  "label.tokens": "tok",
+  "label.errors": "{{count}} errori",
+  "label.budget": "budget {{meter}} {{spent}} di {{total}}",
+
+  "units.none": "Nessuna Unit.",
+  "unit.notStarted": "non avviata",
+  "unit.typed": "tipizzata",
+  "unit.noOutput": "Nessun output.",
+
+  "ask.typeOwn": "Scrivi la tua risposta",
+  "ask.placeholder": "La tua risposta",
+  "ask.sending": "Invio…",
+  "ask.settledElsewhere": "Questa domanda è stata risolta altrove.",
+  "ask.answerSent": "Risposta inviata.",
+  "ask.dismissed": "Ignorata; l'esecuzione prosegue senza risposta.",
+  "ask.kindPermission": "Autorizzazione",
+  "ask.kindForm": "Domanda (modulo OpenCode)",
+  "ask.kindScript": "Domanda dal workflow",
+  "ask.kindUnit": "Domanda da una Unit",
+  "ask.kindApprovalRun": "Eseguire questo workflow inline?",
+  "ask.kindApprovalSave": "Salvare questo workflow inline?",
+  "ask.approvalMeta": "{{size}} · sha256 {{sha}}…",
+  "ask.notSent": "Non inviato: {{error}}",
+  "ask.notDismissed": "Non ignorato: {{error}}",
+  "ask.noResource": "(nessuna risorsa)",
+
+  "confirm.deleteTitle": "Eliminare le sessioni Unit?",
+  "confirm.deleteBody":
+    "Eliminare le {{count}} sessioni Unit di {{name}}? Le loro trascrizioni escono da OpenCode; il registro dell'esecuzione resta.",
+  "confirm.delete": "Elimina",
+
+  "toast.started": "{{name}} avviato.",
+  "toast.resumed": "{{name}} ripreso: le Unit concluse vengono riprodotte, il resto viene eseguito dal vivo.",
+  "toast.saved": 'Salvato come "{{key}}".',
+  "toast.sent": "/{{command}} inviato alla sessione.",
+  "toast.cleaned": "Pulite {{runs}} esecuzioni: eliminate {{deleted}} sessioni.",
+  "toast.waiting": "{{name}} ha bisogno di te — apri il pannello Workflow.",
+  "toast.finished": "{{name}} {{status}}.",
+  "toast.noSaved": "Nessuna esecuzione conclusa contrassegnata per la pulizia.",
+  "toast.nothingWaiting": "Nessun workflow è in attesa di risposta.",
+  "toast.noSessions": "Questa esecuzione non ha sessioni Unit da eliminare.",
+  "toast.notification": "Workflow {{name}}",
+  "toast.needsYou": "ha bisogno di te",
+
+  "pill.title": "Workflow in attesa di te",
+  "pill.waiting.one": "{{count}} in attesa",
+  "pill.waiting.other": "{{count}} in attesa",
+
+  "saved.runTitle": "Esegui {{key}}",
+  "saved.runDescription": "{{description}}\nDi' cosa vuoi: l'agente costruisce gli argomenti e lo esegue.",
+  "saved.runPlaceholder": "Cosa dovrebbe fare?",
+  "saved.saveDescription": "Scrive lo script dell'esecuzione in .opencode/workflows/<name>.ts",
+  "saved.failed": "{{action}}: {{error}}",
+
+  "pair.title": "Abbina un browser",
+  "pair.body":
+    "Apri {{url}} sull'altro dispositivo e inserisci il codice:\n\n    {{code}}\n\nUtilizzo singolo; scade alle {{time}}.",
+} as const

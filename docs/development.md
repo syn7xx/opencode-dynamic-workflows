@@ -4,26 +4,28 @@ Everything you need to change the plugin, run it from a checkout and test it.
 
 ## Prerequisites
 
-| Tool                                   | Why                                                        |
-| -------------------------------------- | ---------------------------------------------------------- |
-| [Bun](https://bun.sh) 1.3+             | Installs dependencies, runs tests, builds and scripts.     |
-| [OpenCode](https://opencode.ai) 2.1.0+ | Runs the plugin; needed only for the live tests.           |
-| A model provider signed in to OpenCode | Live tests and real Runs. Unit tests and the UI need none. |
+| Tool                                   | Why                                                                                               |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| [Bun](https://bun.sh) 1.3+             | Installs dependencies, runs tests, builds and scripts.                                            |
+| [OpenCode](https://opencode.ai) 2.1.0+ | Runs the plugin; needed only for the live tests. The GUI plugin (desktop / web app) needs 2.2.0+. |
+| A model provider signed in to OpenCode | Live tests and real Runs. Unit tests and the UI need none.                                        |
 
 ## Layout
 
-| Path                                | What                                                                          |
-| ----------------------------------- | ----------------------------------------------------------------------------- |
-| `packages/plugin`                   | The published package: engine, protocol, service, Gateway, TUI plugin, skill. |
-| `packages/plugin/src/*.ts`          | The engine. Host-independent; talks to OpenCode only through `src/host.ts`.   |
-| `packages/plugin/src/host/`         | The OpenCode V2 adapter: tools, hooks, events, RPC, commands, the skill.      |
-| `packages/plugin/src/service/`      | The service boundary every surface calls, and the plugin-RPC contract.        |
-| `packages/plugin/src/gateway/`      | HTTP + SSE Gateway and token auth.                                            |
-| `packages/plugin/src/tui/`          | The TUI plugin, precompiled to `dist/tui.js`.                                 |
-| `packages/plugin/skill/`            | The `dynamic-workflows` authoring skill the plugin registers.                 |
-| `packages/web`                      | The web app (Solid + Vite), built into `packages/plugin/dist/web`.            |
-| `packages/plugin/test/fake-host.ts` | An in-memory OpenCode: most engine behaviour is tested against it.            |
-| `packages/plugin/test/live/`        | Live tests against a real OpenCode server.                                    |
+| Path                                | What                                                                                               |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `packages/plugin`                   | The published package: engine, protocol, service, Gateway, TUI and GUI plugins, skill.             |
+| `packages/plugin/src/*.ts`          | The engine. Host-independent; talks to OpenCode only through `src/host.ts`.                        |
+| `packages/plugin/src/host/`         | The OpenCode V2 adapter: tools, hooks, events, RPC, commands, the skill.                           |
+| `packages/plugin/src/service/`      | The service boundary every surface calls, and the plugin-RPC contract.                             |
+| `packages/plugin/src/gateway/`      | HTTP + SSE Gateway and token auth.                                                                 |
+| `packages/plugin/src/ui/`           | The shared, host-agnostic core both UIs build on (state, sync, rpc, nav, format, answer, cleanup). |
+| `packages/plugin/src/tui/`          | The TUI plugin, precompiled to `dist/tui.js`.                                                      |
+| `packages/plugin/src/gui/`          | The GUI plugin (desktop / web app), precompiled to `dist/gui-experimental.cjs`.                    |
+| `packages/plugin/skill/`            | The `dynamic-workflows` authoring skill the plugin registers.                                      |
+| `packages/web`                      | The web app (Solid + Vite), built into `packages/plugin/dist/web`.                                 |
+| `packages/plugin/test/fake-host.ts` | An in-memory OpenCode: most engine behaviour is tested against it.                                 |
+| `packages/plugin/test/live/`        | Live tests against a real OpenCode server.                                                         |
 
 ## Setup
 
@@ -31,13 +33,13 @@ Everything you need to change the plugin, run it from a checkout and test it.
 git clone https://github.com/syn7xx/opencode-dynamic-workflows
 cd opencode-dynamic-workflows
 bun install
-bun run build   # dist/tui.js and dist/web
+bun run build   # dist/tui.js, dist/gui-experimental.cjs and dist/web
 ```
 
 ## Running the plugin from your checkout
 
-Point a test project at the package directory (OpenCode resolves a directory plugin's `server`, `tui` and `rpc`
-entries by path):
+Point a test project at the package directory (OpenCode resolves a directory plugin's `server`, `tui`, `rpc` and
+`gui-experimental.cjs` entries by path):
 
 ```json
 {
@@ -48,7 +50,9 @@ entries by path):
 
 - **Server changes** (engine, host, service, Gateway) need an OpenCode restart: Bun caches modules for the life of the
   process, so a location reload does not pick them up.
-- **TUI changes** need `bun run build` and a restart.
+- **TUI changes** need `bun run build:tui` and a restart.
+- **GUI changes** (desktop / web app) need `bun run build:gui` and a restart. The GUI half needs OpenCode 2.2.0+ and a
+  build whose desktop app hosts `./gui-experimental` bundles; it loads beside the TUI, not instead of it.
 - **Web app changes**: `bun run --cwd packages/web dev` serves it with hot reload and forwards `/v1` to
   `WF_GATEWAY` (default `http://127.0.0.1:4320`).
 - **Worktree Units** (`isolation: "worktree"`) only work when the plugin is configured in a committed

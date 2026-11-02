@@ -1,5 +1,6 @@
 /**
- * Keeps a {@link SyncState} current over the workflow RPC: snapshot, subscribe, apply, catch up, resync.
+ * Keeps a {@link SyncState} current over the workflow RPC: snapshot, subscribe, apply, catch up, resync. Shared by
+ * the TUI and the GUI plugins.
  *
  * OpenCode's event stream is volatile (no replay; the first event after subscribing can be missed),
  * so the controller never trusts it alone: it re-subscribes with backoff, and {@link WorkflowSync.poll} (run with

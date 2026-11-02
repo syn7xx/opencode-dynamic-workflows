@@ -54,6 +54,12 @@ export function pop(nav: Nav): Nav | null {
   return { ...nav, stack: nav.stack.slice(0, -1) }
 }
 
+/** Jump back to keep the first `depth` views, dropping the rest; a no-op when nothing would be dropped. */
+export function popTo(nav: Nav, depth: number): Nav {
+  if (depth <= 0 || depth >= nav.stack.length) return nav
+  return { ...nav, stack: nav.stack.slice(0, depth) }
+}
+
 export function cursor(nav: Nav, count: number, view: View = current(nav)): number {
   const value = nav.cursors[viewKey(view)] ?? 0
   return count <= 0 ? 0 : Math.max(0, Math.min(count - 1, value))

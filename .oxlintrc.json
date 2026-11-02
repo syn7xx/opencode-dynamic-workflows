@@ -33,7 +33,13 @@
     "oxc/no-map-spread": "off",
     "promise/always-return": "off"
   },
-  "ignorePatterns": ["**/dist/**", "**/dist-types/**", "packages/plugin/docs/protocol/schemas/**", ".opencode/**"],
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/dist-types/**",
+    "**/dist-types-gui/**",
+    "packages/plugin/docs/protocol/schemas/**",
+    ".opencode/**"
+  ],
   "overrides": [
     {
       "files": ["**/*.tsx"],
@@ -43,6 +49,12 @@
     },
     {
       "files": ["packages/web/src/index.tsx"],
+      "rules": {
+        "import/no-unassigned-import": "off"
+      }
+    },
+    {
+      "files": ["packages/plugin/test/gui/*.ts"],
       "rules": {
         "import/no-unassigned-import": "off"
       }

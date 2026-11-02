@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test"
 
 import { WorkflowRpc } from "../../src/service/rpc"
-import { bindApi, errorText, type WorkflowApi } from "../../src/tui/api"
-import { cleanupPending, cleanupRun, cleanupTargets } from "../../src/tui/cleanup"
+import { bindApi, errorText, type WorkflowApi } from "../../src/ui/api"
+import { cleanupPending, cleanupRun, cleanupTargets } from "../../src/ui/cleanup"
 import { entry, run, unit } from "./fixtures"
 
 function fakeApi(runs: ReturnType<typeof run>[]) {

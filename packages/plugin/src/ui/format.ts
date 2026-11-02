@@ -1,7 +1,7 @@
 import { formatClock, formatDay, formatElapsed, formatTokens, meter, phasePosition, phaseProgress } from "../progress"
 /**
- * Pure text for every TUI surface: status glyphs and words, column layouts with density tiers, the composer
- * strip, sidebar lines.
+ * Pure text for every surface: status glyphs and words, column layouts with density tiers, the composer strip,
+ * sidebar lines. Shared by the TUI and the GUI plugins.
  *
  * Rows carry columns (right-aligned numbers, padded names); identity, status and counts survive at
  * every width (80 columns is a contract); status is a glyph AND a word, colour only a bonus (an adversarial theme

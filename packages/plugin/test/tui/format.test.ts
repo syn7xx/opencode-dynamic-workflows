@@ -19,7 +19,7 @@ import {
   unitCells,
   unitName,
   wrapLines,
-} from "../../src/tui/format"
+} from "../../src/ui/format"
 import { entry, run, unit } from "./fixtures"
 
 describe("status", () => {

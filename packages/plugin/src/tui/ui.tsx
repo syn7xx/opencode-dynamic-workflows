@@ -8,7 +8,7 @@ import { generateSyntax } from "@opencode/theme/tui"
 import type { RGBA, SyntaxStyle } from "@opentui/core"
 import { createMemo, For, onCleanup, Show, type Accessor, type JSX } from "solid-js"
 
-import { truncate, type Tone } from "./format"
+import { truncate, type Tone } from "../ui/format"
 
 /** OpenCode's `SplitBorder`: a heavy left bar, nothing else. */
 export const ACCENT_BORDER = {

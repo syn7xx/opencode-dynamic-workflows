@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "composite": true,
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "outDir": "./dist-types-gui",
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"]
+  },
+  "references": [{ "path": "./tsconfig.json" }],
+  "include": ["src/gui", "script/build-gui.ts"]
+}

@@ -1,9 +1,9 @@
 /**
- * The TUI's narrow, typed view of the workflow RPC (protocol v1).
+ * A surface's narrow, typed view of the workflow RPC (protocol v1). Shared by the TUI and the GUI plugins.
  *
  * The OpenCode client builds an RPC client from a definition's id and method names only (no client-side
- * validation), so the TUI passes the server's own {@link WorkflowRpc} and casts the result to this interface once,
- * here. Every method is bound to the TUI's location. The same interface is what the unit tests fake.
+ * validation), so a surface passes the server's own {@link WorkflowRpc} and casts the result to this interface once,
+ * here. Every method is bound to the surface's location. The same interface is what the unit tests fake.
  */
 import type {
   ActivityEntry,

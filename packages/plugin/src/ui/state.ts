@@ -1,5 +1,6 @@
 /**
- * The TUI's copy of one location's Runs, and the pure rule that keeps it current.
+ * A surface's copy of one location's Runs, and the pure rule that keeps it current. Shared by the TUI and the
+ * GUI plugins (nothing here is terminal- or DOM-specific).
  *
  * Protocol rule (docs/protocol): snapshot → subscribe → apply events whose `revision` is greater than the
  * snapshot's → on a `seq` gap or `resync.required`, re-read. {@link applyEvent} never performs I/O; it returns the
@@ -87,13 +88,23 @@ export function fromSnapshot(input: {
   webUrl?: string | null
 }): SyncState {
   const runs: Record<string, RunSlot> = {}
-  for (const entry of input.entries)
+  for (const entry of input.entries) {
+    const previous = input.previous?.runs[entry.runId]
+    // A Run a view already holds in full stays full: a re-read must not demote it to entry depth, or the open view
+    // would show "loading" until an event happens to hydrate it again (and a finished Run never emits one). Merge the
+    // fresh library header into the held Run so status, usage and phase stay current; the heavy collections stand.
+    if (previous?.run) {
+      const run = mergeHeaderIntoRun(previous.run, entry)
+      runs[entry.runId] = { ...slotOf(run, previous.activity), snapshotRevision: previous.snapshotRevision }
+      continue
+    }
     runs[entry.runId] = {
       entry: { ...entry, live: live(entry.status) },
       run: null,
       snapshotRevision: 0,
       activity: null,
     }
+  }
   for (const run of input.runs) runs[run.runId] = slotOf(run, input.previous?.runs[run.runId]?.activity ?? null)
   // Runs a view already holds in full that the (bounded) library did not list stay available.
   for (const [runId, slot] of Object.entries(input.previous?.runs ?? {})) {
@@ -137,6 +148,27 @@ function mergeHeaderIntoEntry(entry: LibraryEntry, header: RunHeader): LibraryEn
     startedAt: header.startedAt,
     endedAt: header.endedAt,
     live: live(header.status),
+  }
+}
+
+/**
+ * Merge a `LibraryEntry` header into a full-depth Run, keeping its Units, logs, interactions and revision. Used when
+ * a re-read (`fromSnapshot`) finds a Run a view already holds in full: the header stays current, the heavy
+ * collections and the revision they were current to stand, so a dispatch after the snapshot is not skipped.
+ */
+function mergeHeaderIntoRun(run: Run, entry: LibraryEntry): Run {
+  return {
+    ...run,
+    workflow: entry.workflow,
+    status: entry.status,
+    waiting: entry.waiting,
+    phases: entry.phases,
+    phasesDeclared: entry.phasesDeclared,
+    currentPhase: entry.currentPhase,
+    usage: entry.usage,
+    tokensSpent: entry.tokensSpent,
+    startedAt: entry.startedAt,
+    endedAt: entry.endedAt,
   }
 }
 

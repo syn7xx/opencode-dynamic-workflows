@@ -1,0 +1,108 @@
+/**
+ * The Workflows GUI plugin's Dutch copy. English (`./en.ts`) is the source and the fallback: a key this file lacks
+ * is read from English. Dutch uses `one`/`other` in practice.
+ */
+export default {
+  "panel.title": "Workflows",
+  "panel.titleSession": "Workflows (deze sessie)",
+  "panel.empty": "Nog geen runs. Laat de agent een workflow schrijven, of sla er een op onder .opencode/workflows/.",
+  "panel.emptyFilter": "Niets komt overeen met dit filter.",
+  "panel.loading": "Laden…",
+
+  "group.live": "Actief",
+  "group.recent": "Recent",
+  "group.saved": "Opgeslagen",
+
+  "command.open": "Workflows: de run-bibliotheek openen",
+  "command.openPanel": "Workflows: het run-paneel openen",
+  "command.answer": "Workflows: een wachtende vraag beantwoorden",
+  "command.cleanup": "Workflows: de Unit-sessies van afgeronde runs verwijderen",
+  "command.pair": "Workflows: een browser koppelen (webapp)",
+
+  "action.refresh": "Vernieuwen",
+  "action.openBrowser": "Openen in browser",
+  "action.filter": "Filter",
+  "action.answer": "Antwoorden",
+  "action.stop": "Stoppen",
+  "action.resume": "Hervatten",
+  "action.save": "Opslaan",
+  "action.deleteUnits": "Unit-sessies verwijderen",
+  "action.stopUnit": "Unit stoppen",
+  "action.restartUnit": "Unit herstarten",
+  "action.transcript": "Transcript",
+  "action.parentSession": "Bovenliggende sessie",
+  "action.back": "Terug",
+  "action.runInSession": "In sessie uitvoeren",
+  "action.startNow": "Nu starten",
+  "action.dismiss": "Negeren",
+  "action.choose": "Kiezen",
+
+  "section.units": "Units",
+  "section.result": "Resultaat",
+  "section.activity": "Activiteit",
+  "section.prompt": "Prompt",
+  "section.output": "Uitvoer",
+
+  "label.saved": "opgeslagen",
+  "label.inline": "inline",
+  "label.needsArgs": "argumenten nodig",
+  "label.unit": "unit",
+  "label.units": "units",
+  "label.tokens": "tok",
+  "label.errors": "{{count}} fout(en)",
+  "label.budget": "budget {{meter}} {{spent}} van {{total}}",
+
+  "units.none": "Nog geen Units.",
+  "unit.notStarted": "niet gestart",
+  "unit.typed": "getypeerd",
+  "unit.noOutput": "Geen uitvoer.",
+
+  "ask.typeOwn": "Typ je eigen antwoord",
+  "ask.placeholder": "Typ je antwoord",
+  "ask.sending": "Versturen…",
+  "ask.settledElsewhere": "Die vraag is elders beantwoord.",
+  "ask.answerSent": "Antwoord verzonden.",
+  "ask.dismissed": "Genegeerd; de run gaat verder zonder antwoord.",
+  "ask.kindPermission": "Toestemming",
+  "ask.kindForm": "Vraag (OpenCode-formulier)",
+  "ask.kindScript": "Vraag uit de workflow",
+  "ask.kindUnit": "Vraag uit een Unit",
+  "ask.kindApprovalRun": "Deze inline-workflow uitvoeren?",
+  "ask.kindApprovalSave": "Deze inline-workflow opslaan?",
+  "ask.approvalMeta": "{{size}} · sha256 {{sha}}…",
+  "ask.notSent": "Niet verzonden: {{error}}",
+  "ask.notDismissed": "Niet genegeerd: {{error}}",
+  "ask.noResource": "(geen resource)",
+
+  "confirm.deleteTitle": "Unit-sessies verwijderen?",
+  "confirm.deleteBody":
+    "De {{count}} Unit-sessies van {{name}} verwijderen? Hun transcripten verlaten OpenCode; het record van de run blijft.",
+  "confirm.delete": "Verwijderen",
+
+  "toast.started": "{{name}} gestart.",
+  "toast.resumed": "{{name}} hervat: afgeronde Units worden opnieuw afgespeeld, de rest draait live.",
+  "toast.saved": 'Opgeslagen als "{{key}}".',
+  "toast.sent": "/{{command}} naar de sessie verzonden.",
+  "toast.cleaned": "{{runs}} run(s) opgeruimd: {{deleted}} sessie(s) verwijderd.",
+  "toast.waiting": "{{name}} heeft je nodig — open het Workflows-paneel.",
+  "toast.finished": "{{name}} {{status}}.",
+  "toast.noSaved": "Geen afgeronde runs gemarkeerd voor opruimen.",
+  "toast.nothingWaiting": "Geen workflow wacht op een antwoord.",
+  "toast.noSessions": "Deze run heeft geen Unit-sessies om te verwijderen.",
+  "toast.notification": "Workflow {{name}}",
+  "toast.needsYou": "heeft je nodig",
+
+  "pill.title": "Workflows die op je wachten",
+  "pill.waiting.one": "{{count}} wacht",
+  "pill.waiting.other": "{{count}} wachten",
+
+  "saved.runTitle": "{{key}} uitvoeren",
+  "saved.runDescription": "{{description}}\nZeg wat je wilt: de agent bouwt de argumenten en voert het uit.",
+  "saved.runPlaceholder": "Wat moet het doen?",
+  "saved.saveDescription": "Schrijft het script van de run naar .opencode/workflows/<name>.ts",
+  "saved.failed": "{{action}}: {{error}}",
+
+  "pair.title": "Een browser koppelen",
+  "pair.body":
+    "Open {{url}} op het andere apparaat en voer de code in:\n\n    {{code}}\n\nEenmalig; verloopt om {{time}}.",
+} as const

@@ -1,0 +1,109 @@
+/**
+ * The Workflows GUI plugin's French copy. English (`./en.ts`) is the source and the fallback: a key this file lacks
+ * is read from English. French uses `one`/`other` in practice (the CLDR `many` only applies to millions).
+ */
+export default {
+  "panel.title": "Workflows",
+  "panel.titleSession": "Workflows (cette session)",
+  "panel.empty":
+    "Aucune exécution pour l'instant. Demandez à l'agent d'écrire un workflow, ou enregistrez-en un dans .opencode/workflows/.",
+  "panel.emptyFilter": "Rien ne correspond à ce filtre.",
+  "panel.loading": "Chargement…",
+
+  "group.live": "En cours",
+  "group.recent": "Récentes",
+  "group.saved": "Enregistrés",
+
+  "command.open": "Workflows : ouvrir la bibliothèque des exécutions",
+  "command.openPanel": "Workflows : ouvrir le panneau des exécutions",
+  "command.answer": "Workflows : répondre à une question en attente",
+  "command.cleanup": "Workflows : supprimer les sessions d'Unit des exécutions terminées",
+  "command.pair": "Workflows : appairer un navigateur (application web)",
+
+  "action.refresh": "Actualiser",
+  "action.openBrowser": "Ouvrir dans le navigateur",
+  "action.filter": "Filtrer",
+  "action.answer": "Répondre",
+  "action.stop": "Arrêter",
+  "action.resume": "Reprendre",
+  "action.save": "Enregistrer",
+  "action.deleteUnits": "Supprimer les sessions d'Unit",
+  "action.stopUnit": "Arrêter l'Unit",
+  "action.restartUnit": "Redémarrer l'Unit",
+  "action.transcript": "Transcription",
+  "action.parentSession": "Session parente",
+  "action.back": "Retour",
+  "action.runInSession": "Exécuter dans la session",
+  "action.startNow": "Lancer maintenant",
+  "action.dismiss": "Rejeter",
+  "action.choose": "Choisir",
+
+  "section.units": "Units",
+  "section.result": "Résultat",
+  "section.activity": "Activité",
+  "section.prompt": "Prompt",
+  "section.output": "Sortie",
+
+  "label.saved": "enregistré",
+  "label.inline": "en ligne",
+  "label.needsArgs": "arguments requis",
+  "label.unit": "unit",
+  "label.units": "units",
+  "label.tokens": "tok",
+  "label.errors": "{{count}} erreur(s)",
+  "label.budget": "budget {{meter}} {{spent}} sur {{total}}",
+
+  "units.none": "Aucune Unit pour l'instant.",
+  "unit.notStarted": "non démarrée",
+  "unit.typed": "typée",
+  "unit.noOutput": "Aucune sortie.",
+
+  "ask.typeOwn": "Saisissez votre propre réponse",
+  "ask.placeholder": "Votre réponse",
+  "ask.sending": "Envoi…",
+  "ask.settledElsewhere": "Cette question a été réglée ailleurs.",
+  "ask.answerSent": "Réponse envoyée.",
+  "ask.dismissed": "Rejetée ; l'exécution continue sans réponse.",
+  "ask.kindPermission": "Autorisation",
+  "ask.kindForm": "Question (formulaire OpenCode)",
+  "ask.kindScript": "Question du workflow",
+  "ask.kindUnit": "Question d'une Unit",
+  "ask.kindApprovalRun": "Exécuter ce workflow en ligne ?",
+  "ask.kindApprovalSave": "Enregistrer ce workflow en ligne ?",
+  "ask.approvalMeta": "{{size}} · sha256 {{sha}}…",
+  "ask.notSent": "Non envoyé : {{error}}",
+  "ask.notDismissed": "Non rejeté : {{error}}",
+  "ask.noResource": "(aucune ressource)",
+
+  "confirm.deleteTitle": "Supprimer les sessions d'Unit ?",
+  "confirm.deleteBody":
+    "Supprimer les {{count}} sessions d'Unit de {{name}} ? Leurs transcriptions quittent OpenCode ; l'enregistrement de l'exécution reste.",
+  "confirm.delete": "Supprimer",
+
+  "toast.started": "{{name}} démarré.",
+  "toast.resumed": "{{name}} repris : les Units terminées sont rejouées, le reste s'exécute en direct.",
+  "toast.saved": "Enregistré sous « {{key}} ».",
+  "toast.sent": "/{{command}} envoyé à la session.",
+  "toast.cleaned": "{{runs}} exécution(s) nettoyée(s) : {{deleted}} session(s) supprimée(s).",
+  "toast.waiting": "{{name}} a besoin de vous — ouvrez le panneau Workflows.",
+  "toast.finished": "{{name}} {{status}}.",
+  "toast.noSaved": "Aucune exécution terminée marquée pour le nettoyage.",
+  "toast.nothingWaiting": "Aucun workflow n'attend de réponse.",
+  "toast.noSessions": "Cette exécution n'a aucune session d'Unit à supprimer.",
+  "toast.notification": "Workflow {{name}}",
+  "toast.needsYou": "a besoin de vous",
+
+  "pill.title": "Workflows en attente",
+  "pill.waiting.one": "{{count}} en attente",
+  "pill.waiting.other": "{{count}} en attente",
+
+  "saved.runTitle": "Exécuter {{key}}",
+  "saved.runDescription": "{{description}}\nDites ce que vous voulez : l'agent construit les arguments et l'exécute.",
+  "saved.runPlaceholder": "Que devrait-il faire ?",
+  "saved.saveDescription": "Écrit le script de l'exécution dans .opencode/workflows/<name>.ts",
+  "saved.failed": "{{action}} : {{error}}",
+
+  "pair.title": "Appairer un navigateur",
+  "pair.body":
+    "Ouvrez {{url}} sur l'autre appareil et saisissez le code :\n\n    {{code}}\n\nÀ usage unique ; expire à {{time}}.",
+} as const

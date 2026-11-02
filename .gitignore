@@ -5,9 +5,10 @@ bun.lockb
 # TS build artifacts
 *.tsbuildinfo
 packages/*/dist-types/
+packages/plugin/dist-types-gui/
 
 # Local OpenCode setup for running the plugin from this checkout
 .opencode/
 
-# Built TUI plugin and web app (`bun run build`; shipped in the package, not committed)
+# Built TUI + GUI plugins and web app (`bun run build`; shipped in the package, not committed)
 packages/plugin/dist/
