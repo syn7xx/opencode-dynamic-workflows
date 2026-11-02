@@ -1,0 +1,109 @@
+/**
+ * The Workflows GUI plugin's German copy. English (`./en.ts`) is the source and the fallback: a key this file lacks
+ * is read from English. German pluralizes like English (`one`/`other`).
+ */
+export default {
+  "panel.title": "Workflows",
+  "panel.titleSession": "Workflows (diese Sitzung)",
+  "panel.empty":
+    "Noch keine Runs. Bitte den Agenten, einen Workflow zu schreiben, oder speichere einen unter .opencode/workflows/.",
+  "panel.emptyFilter": "Nichts entspricht diesem Filter.",
+  "panel.loading": "Wird geladen…",
+
+  "group.live": "Aktiv",
+  "group.recent": "Kürzlich",
+  "group.saved": "Gespeichert",
+
+  "command.open": "Workflows: die Run-Bibliothek öffnen",
+  "command.openPanel": "Workflows: das Run-Panel öffnen",
+  "command.answer": "Workflows: eine wartende Frage beantworten",
+  "command.cleanup": "Workflows: die Unit-Sitzungen abgeschlossener Runs löschen",
+  "command.pair": "Workflows: einen Browser koppeln (Web-App)",
+
+  "action.refresh": "Aktualisieren",
+  "action.openBrowser": "Im Browser öffnen",
+  "action.filter": "Filter",
+  "action.answer": "Antworten",
+  "action.stop": "Stoppen",
+  "action.resume": "Fortsetzen",
+  "action.save": "Speichern",
+  "action.deleteUnits": "Unit-Sitzungen löschen",
+  "action.stopUnit": "Unit stoppen",
+  "action.restartUnit": "Unit neu starten",
+  "action.transcript": "Transkript",
+  "action.parentSession": "Übergeordnete Sitzung",
+  "action.back": "Zurück",
+  "action.runInSession": "In Sitzung ausführen",
+  "action.startNow": "Jetzt starten",
+  "action.dismiss": "Verwerfen",
+  "action.choose": "Auswählen",
+
+  "section.units": "Units",
+  "section.result": "Ergebnis",
+  "section.activity": "Aktivität",
+  "section.prompt": "Prompt",
+  "section.output": "Ausgabe",
+
+  "label.saved": "gespeichert",
+  "label.inline": "inline",
+  "label.needsArgs": "benötigt Argumente",
+  "label.unit": "Unit",
+  "label.units": "Units",
+  "label.tokens": "tok",
+  "label.errors": "{{count}} Fehler",
+  "label.budget": "Budget {{meter}} {{spent}} von {{total}}",
+
+  "units.none": "Noch keine Units.",
+  "unit.notStarted": "nicht gestartet",
+  "unit.typed": "typisiert",
+  "unit.noOutput": "Keine Ausgabe.",
+
+  "ask.typeOwn": "Eigene Antwort eingeben",
+  "ask.placeholder": "Deine Antwort",
+  "ask.sending": "Wird gesendet…",
+  "ask.settledElsewhere": "Diese Frage wurde anderweitig beantwortet.",
+  "ask.answerSent": "Antwort gesendet.",
+  "ask.dismissed": "Verworfen; der Run läuft ohne Antwort weiter.",
+  "ask.kindPermission": "Berechtigung",
+  "ask.kindForm": "Frage (OpenCode-Formular)",
+  "ask.kindScript": "Frage aus dem Workflow",
+  "ask.kindUnit": "Frage aus einer Unit",
+  "ask.kindApprovalRun": "Diesen Inline-Workflow ausführen?",
+  "ask.kindApprovalSave": "Diesen Inline-Workflow speichern?",
+  "ask.approvalMeta": "{{size}} · sha256 {{sha}}…",
+  "ask.notSent": "Nicht gesendet: {{error}}",
+  "ask.notDismissed": "Nicht verworfen: {{error}}",
+  "ask.noResource": "(keine Ressource)",
+
+  "confirm.deleteTitle": "Unit-Sitzungen löschen?",
+  "confirm.deleteBody":
+    "Die {{count}} Unit-Sitzungen von {{name}} löschen? Ihre Transkripte verlassen OpenCode; der Datensatz des Runs bleibt.",
+  "confirm.delete": "Löschen",
+
+  "toast.started": "{{name}} gestartet.",
+  "toast.resumed": "{{name}} fortgesetzt: abgeschlossene Units werden wiederholt, der Rest läuft live.",
+  "toast.saved": 'Als „{{key}}" gespeichert.',
+  "toast.sent": "/{{command}} an die Sitzung gesendet.",
+  "toast.cleaned": "{{runs}} Run(s) aufgeräumt: {{deleted}} Sitzung(en) gelöscht.",
+  "toast.waiting": "{{name}} braucht dich — öffne das Workflows-Panel.",
+  "toast.finished": "{{name}} {{status}}.",
+  "toast.noSaved": "Keine abgeschlossenen Runs zum Aufräumen markiert.",
+  "toast.nothingWaiting": "Kein Workflow wartet auf eine Antwort.",
+  "toast.noSessions": "Dieser Run hat keine Unit-Sitzungen zum Löschen.",
+  "toast.notification": "Workflow {{name}}",
+  "toast.needsYou": "braucht dich",
+
+  "pill.title": "Workflows, die auf dich warten",
+  "pill.waiting.one": "{{count}} wartet",
+  "pill.waiting.other": "{{count}} warten",
+
+  "saved.runTitle": "{{key}} ausführen",
+  "saved.runDescription": "{{description}}\nSag, was du willst: der Agent baut die Argumente und führt es aus.",
+  "saved.runPlaceholder": "Was soll es tun?",
+  "saved.saveDescription": "Schreibt das Skript des Runs nach .opencode/workflows/<name>.ts",
+  "saved.failed": "{{action}}: {{error}}",
+
+  "pair.title": "Browser koppeln",
+  "pair.body":
+    "Öffne {{url}} auf dem anderen Gerät und gib den Code ein:\n\n    {{code}}\n\nEinmalig; läuft ab um {{time}}.",
+} as const

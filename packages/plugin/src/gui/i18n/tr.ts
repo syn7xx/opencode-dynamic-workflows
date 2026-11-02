@@ -1,0 +1,109 @@
+/**
+ * The Workflows GUI plugin's Turkish copy. English (`./en.ts`) is the source and the fallback: a key this file lacks
+ * is read from English. Turkish uses `one`/`other` (`other` covers every count above one).
+ */
+export default {
+  "panel.title": "İş akışları",
+  "panel.titleSession": "İş akışları (bu oturum)",
+  "panel.empty":
+    "Henüz çalıştırma yok. Ajanın bir iş akışı yazmasını isteyin ya da birini .opencode/workflows/ altına kaydedin.",
+  "panel.emptyFilter": "Bu filtreyle eşleşen bir şey yok.",
+  "panel.loading": "Yükleniyor…",
+
+  "group.live": "Etkin",
+  "group.recent": "Son",
+  "group.saved": "Kayıtlı",
+
+  "command.open": "İş akışları: çalıştırma kitaplığını aç",
+  "command.openPanel": "İş akışları: çalıştırma panelini aç",
+  "command.answer": "İş akışları: bekleyen bir soruyu yanıtla",
+  "command.cleanup": "İş akışları: biten çalıştırmaların Unit oturumlarını sil",
+  "command.pair": "İş akışları: bir tarayıcıyı eşleştir (web uygulaması)",
+
+  "action.refresh": "Yenile",
+  "action.openBrowser": "Tarayıcıda aç",
+  "action.filter": "Filtre",
+  "action.answer": "Yanıtla",
+  "action.stop": "Durdur",
+  "action.resume": "Sürdür",
+  "action.save": "Kaydet",
+  "action.deleteUnits": "Unit oturumlarını sil",
+  "action.stopUnit": "Unit'i durdur",
+  "action.restartUnit": "Unit'i yeniden başlat",
+  "action.transcript": "Döküm",
+  "action.parentSession": "Üst oturum",
+  "action.back": "Geri",
+  "action.runInSession": "Oturumda çalıştır",
+  "action.startNow": "Şimdi başlat",
+  "action.dismiss": "Yoksay",
+  "action.choose": "Seç",
+
+  "section.units": "Unit'ler",
+  "section.result": "Sonuç",
+  "section.activity": "Etkinlik",
+  "section.prompt": "Prompt",
+  "section.output": "Çıktı",
+
+  "label.saved": "kayıtlı",
+  "label.inline": "satır içi",
+  "label.needsArgs": "argüman gerekli",
+  "label.unit": "unit",
+  "label.units": "unit",
+  "label.tokens": "tok",
+  "label.errors": "{{count}} hata",
+  "label.budget": "bütçe {{meter}} {{spent}} / {{total}}",
+
+  "units.none": "Henüz Unit yok.",
+  "unit.notStarted": "başlamadı",
+  "unit.typed": "tipli",
+  "unit.noOutput": "Çıktı yok.",
+
+  "ask.typeOwn": "Kendi yanıtınızı yazın",
+  "ask.placeholder": "Yanıtınızı yazın",
+  "ask.sending": "Gönderiliyor…",
+  "ask.settledElsewhere": "Bu soru başka bir yerde yanıtlandı.",
+  "ask.answerSent": "Yanıt gönderildi.",
+  "ask.dismissed": "Yoksayıldı; çalıştırma yanıt olmadan devam eder.",
+  "ask.kindPermission": "İzin",
+  "ask.kindForm": "Soru (OpenCode formu)",
+  "ask.kindScript": "İş akışından soru",
+  "ask.kindUnit": "Bir Unit'ten soru",
+  "ask.kindApprovalRun": "Bu satır içi iş akışı çalıştırılsın mı?",
+  "ask.kindApprovalSave": "Bu satır içi iş akışı kaydedilsin mi?",
+  "ask.approvalMeta": "{{size}} · sha256 {{sha}}…",
+  "ask.notSent": "Gönderilmedi: {{error}}",
+  "ask.notDismissed": "Yoksayılmadı: {{error}}",
+  "ask.noResource": "(kaynak yok)",
+
+  "confirm.deleteTitle": "Unit oturumları silinsin mi?",
+  "confirm.deleteBody":
+    "{{name}} için {{count}} Unit oturumu silinsin mi? Dökümleri OpenCode'dan çıkar; çalıştırmanın kaydı kalır.",
+  "confirm.delete": "Sil",
+
+  "toast.started": "{{name}} başlatıldı.",
+  "toast.resumed": "{{name}} sürdürüldü: biten Unit'ler yeniden oynatılır, gerisi canlı çalışır.",
+  "toast.saved": '"{{key}}" olarak kaydedildi.',
+  "toast.sent": "/{{command}} oturuma gönderildi.",
+  "toast.cleaned": "{{runs}} çalıştırma temizlendi: {{deleted}} oturum silindi.",
+  "toast.waiting": "{{name}} sizi bekliyor — İş akışları panelini açın.",
+  "toast.finished": "{{name}} {{status}}.",
+  "toast.noSaved": "Temizlik için işaretlenmiş bitmiş çalıştırma yok.",
+  "toast.nothingWaiting": "Hiçbir iş akışı yanıt beklemiyor.",
+  "toast.noSessions": "Bu çalıştırmanın silinecek Unit oturumu yok.",
+  "toast.notification": "İş akışı {{name}}",
+  "toast.needsYou": "sizi bekliyor",
+
+  "pill.title": "Sizi bekleyen iş akışları",
+  "pill.waiting.one": "{{count}} bekliyor",
+  "pill.waiting.other": "{{count}} bekliyor",
+
+  "saved.runTitle": "{{key}} çalıştır",
+  "saved.runDescription": "{{description}}\nNe istediğinizi söyleyin: ajan argümanları kurup çalıştırır.",
+  "saved.runPlaceholder": "Ne yapmalı?",
+  "saved.saveDescription": "Çalıştırmanın betiğini .opencode/workflows/<name>.ts dosyasına yazar",
+  "saved.failed": "{{action}}: {{error}}",
+
+  "pair.title": "Bir tarayıcıyı eşleştir",
+  "pair.body":
+    "Diğer cihazda {{url}} adresini açın ve kodu girin:\n\n    {{code}}\n\nTek kullanımlık; {{time}} itibarıyla sona erer.",
+} as const

@@ -1,0 +1,111 @@
+/**
+ * The Workflows GUI plugin's Ukrainian copy. English (`./en.ts`) is the source and the fallback: a key this file
+ * lacks is read from English. Ukrainian pluralizes like Russian: `pill.waiting` carries the CLDR categories
+ * `one`/`few`/`many` (plus `other` as the safety net), and `ctx.plural` picks one by `count`.
+ */
+export default {
+  "panel.title": "Воркфлоу",
+  "panel.titleSession": "Воркфлоу (ця сесія)",
+  "panel.empty": "Запусків поки немає. Попросіть агента написати воркфлоу або збережіть його в .opencode/workflows/.",
+  "panel.emptyFilter": "Нічого не відповідає цьому фільтру.",
+  "panel.loading": "Завантаження…",
+
+  "group.live": "Активні",
+  "group.recent": "Недавні",
+  "group.saved": "Збережені",
+
+  "command.open": "Воркфлоу: відкрити список запусків",
+  "command.openPanel": "Воркфлоу: відкрити панель запусків",
+  "command.answer": "Воркфлоу: відповісти на питання, що очікує",
+  "command.cleanup": "Воркфлоу: видалити сесії юнітів завершених запусків",
+  "command.pair": "Воркфлоу: підключити браузер (вебзастосунок)",
+
+  "action.refresh": "Оновити",
+  "action.openBrowser": "Відкрити в браузері",
+  "action.filter": "Фільтр",
+  "action.answer": "Відповісти",
+  "action.stop": "Зупинити",
+  "action.resume": "Відновити",
+  "action.save": "Зберегти",
+  "action.deleteUnits": "Видалити сесії юнітів",
+  "action.stopUnit": "Зупинити юніт",
+  "action.restartUnit": "Перезапустити юніт",
+  "action.transcript": "Транскрипт",
+  "action.parentSession": "Батьківська сесія",
+  "action.back": "Назад",
+  "action.runInSession": "Запустити в сесії",
+  "action.startNow": "Запустити зараз",
+  "action.dismiss": "Відхилити",
+  "action.choose": "Вибрати",
+
+  "section.units": "Юніти",
+  "section.result": "Результат",
+  "section.activity": "Активність",
+  "section.prompt": "Промпт",
+  "section.output": "Вивід",
+
+  "label.saved": "збережений",
+  "label.inline": "вбудований",
+  "label.needsArgs": "потрібні аргументи",
+  "label.unit": "юніт",
+  "label.units": "юнітів",
+  "label.tokens": "ток",
+  "label.errors": "помилок: {{count}}",
+  "label.budget": "бюджет {{meter}} {{spent}} з {{total}}",
+
+  "units.none": "Юнітів поки немає.",
+  "unit.notStarted": "не розпочато",
+  "unit.typed": "типізований",
+  "unit.noOutput": "Немає виводу.",
+
+  "ask.typeOwn": "Введіть свою відповідь",
+  "ask.placeholder": "Введіть відповідь",
+  "ask.sending": "Надсилання…",
+  "ask.settledElsewhere": "На це питання вже відповіли в іншому місці.",
+  "ask.answerSent": "Відповідь надіслано.",
+  "ask.dismissed": "Відхилено; запуск продовжиться без відповіді.",
+  "ask.kindPermission": "Дозвіл",
+  "ask.kindForm": "Питання (форма OpenCode)",
+  "ask.kindScript": "Питання від воркфлоу",
+  "ask.kindUnit": "Питання від юніта",
+  "ask.kindApprovalRun": "Запустити цей вбудований воркфлоу?",
+  "ask.kindApprovalSave": "Зберегти цей вбудований воркфлоу?",
+  "ask.approvalMeta": "{{size}} · sha256 {{sha}}…",
+  "ask.notSent": "Не надіслано: {{error}}",
+  "ask.notDismissed": "Не відхилено: {{error}}",
+  "ask.noResource": "(немає ресурсу)",
+
+  "confirm.deleteTitle": "Видалити сесії юнітів?",
+  "confirm.deleteBody":
+    "Видалити {{count}} сесій юнітів для {{name}}? Їхні транскрипти зникнуть з OpenCode; запис запуску залишиться.",
+  "confirm.delete": "Видалити",
+
+  "toast.started": "Запущено {{name}}.",
+  "toast.resumed": "{{name}} відновлено: завершені юніти відтворюються, решта виконується наживо.",
+  "toast.saved": "Збережено як «{{key}}».",
+  "toast.sent": "Команду /{{command}} надіслано в сесію.",
+  "toast.cleaned": "Очищено запусків: {{runs}}; видалено сесій: {{deleted}}.",
+  "toast.waiting": "{{name}} очікує на вас — відкрийте панель «Воркфлоу».",
+  "toast.finished": "{{name}}: {{status}}.",
+  "toast.noSaved": "Немає завершених запусків, позначених для очищення.",
+  "toast.nothingWaiting": "Жоден воркфлоу не очікує на відповідь.",
+  "toast.noSessions": "У цього запуску немає сесій юнітів для видалення.",
+  "toast.notification": "Воркфлоу {{name}}",
+  "toast.needsYou": "очікує на вас",
+
+  "pill.title": "Воркфлоу, що очікують на вас",
+  "pill.waiting.one": "{{count}} очікує",
+  "pill.waiting.few": "{{count}} очікують",
+  "pill.waiting.many": "{{count}} очікують",
+  "pill.waiting.other": "{{count}} очікують",
+
+  "saved.runTitle": "Запуск {{key}}",
+  "saved.runDescription": "{{description}}\nОпишіть, що потрібно: агент збудує аргументи й запустить.",
+  "saved.runPlaceholder": "Що потрібно зробити?",
+  "saved.saveDescription": "Запише скрипт запуску в .opencode/workflows/<name>.ts",
+  "saved.failed": "{{action}}: {{error}}",
+
+  "pair.title": "Підключення браузера",
+  "pair.body":
+    "Відкрийте {{url}} на іншому пристрої та введіть код:\n\n    {{code}}\n\nОдноразовий; спливає о {{time}}.",
+} as const

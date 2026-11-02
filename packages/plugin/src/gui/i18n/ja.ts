@@ -1,0 +1,109 @@
+/**
+ * The Workflows GUI plugin's Japanese copy. English (`./en.ts`) is the source and the fallback: a key this file lacks
+ * is read from English. Japanese has a single CLDR plural category (`other`), so `pill.waiting` needs only `one`.
+ */
+export default {
+  "panel.title": "ワークフロー",
+  "panel.titleSession": "ワークフロー（このセッション）",
+  "panel.empty":
+    "まだ実行がありません。エージェントにワークフローを書かせるか、.opencode/workflows/ に保存してください。",
+  "panel.emptyFilter": "このフィルターに一致するものはありません。",
+  "panel.loading": "読み込み中…",
+
+  "group.live": "実行中",
+  "group.recent": "最近",
+  "group.saved": "保存済み",
+
+  "command.open": "ワークフロー: 実行ライブラリを開く",
+  "command.openPanel": "ワークフロー: 実行パネルを開く",
+  "command.answer": "ワークフロー: 待機中の質問に回答する",
+  "command.cleanup": "ワークフロー: 終了した実行の Unit セッションを削除する",
+  "command.pair": "ワークフロー: ブラウザーをペアリングする（Web アプリ）",
+
+  "action.refresh": "更新",
+  "action.openBrowser": "ブラウザーで開く",
+  "action.filter": "フィルター",
+  "action.answer": "回答",
+  "action.stop": "停止",
+  "action.resume": "再開",
+  "action.save": "保存",
+  "action.deleteUnits": "Unit セッションを削除",
+  "action.stopUnit": "Unit を停止",
+  "action.restartUnit": "Unit を再起動",
+  "action.transcript": "トランスクリプト",
+  "action.parentSession": "親セッション",
+  "action.back": "戻る",
+  "action.runInSession": "セッションで実行",
+  "action.startNow": "今すぐ開始",
+  "action.dismiss": "却下",
+  "action.choose": "選択",
+
+  "section.units": "Units",
+  "section.result": "結果",
+  "section.activity": "アクティビティ",
+  "section.prompt": "プロンプト",
+  "section.output": "出力",
+
+  "label.saved": "保存済み",
+  "label.inline": "インライン",
+  "label.needsArgs": "引数が必要",
+  "label.unit": "unit",
+  "label.units": "units",
+  "label.tokens": "tok",
+  "label.errors": "{{count}} 件のエラー",
+  "label.budget": "予算 {{meter}} {{spent}} / {{total}}",
+
+  "units.none": "まだ Unit がありません。",
+  "unit.notStarted": "未開始",
+  "unit.typed": "型付き",
+  "unit.noOutput": "出力なし。",
+
+  "ask.typeOwn": "自分の回答を入力",
+  "ask.placeholder": "回答を入力",
+  "ask.sending": "送信中…",
+  "ask.settledElsewhere": "この質問は別の場所で解決されました。",
+  "ask.answerSent": "回答を送信しました。",
+  "ask.dismissed": "却下しました。実行は回答なしで続行します。",
+  "ask.kindPermission": "権限",
+  "ask.kindForm": "質問（OpenCode フォーム）",
+  "ask.kindScript": "ワークフローからの質問",
+  "ask.kindUnit": "Unit からの質問",
+  "ask.kindApprovalRun": "このインライン ワークフローを実行しますか？",
+  "ask.kindApprovalSave": "このインライン ワークフローを保存しますか？",
+  "ask.approvalMeta": "{{size}} · sha256 {{sha}}…",
+  "ask.notSent": "送信できませんでした: {{error}}",
+  "ask.notDismissed": "却下できませんでした: {{error}}",
+  "ask.noResource": "（リソースなし）",
+
+  "confirm.deleteTitle": "Unit セッションを削除しますか？",
+  "confirm.deleteBody":
+    "{{name}} の {{count}} 個の Unit セッションを削除しますか？トランスクリプトは OpenCode から削除されますが、実行の記録は残ります。",
+  "confirm.delete": "削除",
+
+  "toast.started": "{{name}} を開始しました。",
+  "toast.resumed": "{{name}} を再開しました: 完了した Unit は再生され、残りはライブで実行されます。",
+  "toast.saved": "「{{key}}」として保存しました。",
+  "toast.sent": "/{{command}} をセッションに送信しました。",
+  "toast.cleaned": "{{runs}} 件の実行をクリーンアップしました: {{deleted}} 件のセッションを削除しました。",
+  "toast.waiting": "{{name}} があなたを待っています — ワークフロー パネルを開いてください。",
+  "toast.finished": "{{name}} {{status}}。",
+  "toast.noSaved": "クリーンアップ対象としてマークされた終了済みの実行はありません。",
+  "toast.nothingWaiting": "回答を待っているワークフローはありません。",
+  "toast.noSessions": "この実行には削除する Unit セッションがありません。",
+  "toast.notification": "ワークフロー {{name}}",
+  "toast.needsYou": "があなたを待っています",
+
+  "pill.title": "あなたを待つワークフロー",
+  "pill.waiting.one": "{{count}} 件が待機中",
+  "pill.waiting.other": "{{count}} 件が待機中",
+
+  "saved.runTitle": "{{key}} を実行",
+  "saved.runDescription": "{{description}}\nやりたいことを伝えてください: エージェントが引数を組み立てて実行します。",
+  "saved.runPlaceholder": "何をすべきですか？",
+  "saved.saveDescription": "実行のスクリプトを .opencode/workflows/<name>.ts に書き込みます",
+  "saved.failed": "{{action}}: {{error}}",
+
+  "pair.title": "ブラウザーをペアリング",
+  "pair.body":
+    "別のデバイスで {{url}} を開き、コードを入力してください:\n\n    {{code}}\n\n1 回限り有効。{{time}} に失効します。",
+} as const
