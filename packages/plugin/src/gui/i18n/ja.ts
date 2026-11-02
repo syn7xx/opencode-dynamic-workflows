@@ -50,6 +50,7 @@ export default {
   "label.unit": "unit",
   "label.units": "units",
   "label.tokens": "tok",
+  "label.unitsProgress": "{{settled}} / {{total}}",
   "label.errors": "{{count}} 件のエラー",
   "label.budget": "予算 {{meter}} {{spent}} / {{total}}",
 
@@ -74,6 +75,7 @@ export default {
   "ask.notSent": "送信できませんでした: {{error}}",
   "ask.notDismissed": "却下できませんでした: {{error}}",
   "ask.noResource": "（リソースなし）",
+  "ask.progress": "（{{current}} / {{total}}）",
 
   "confirm.deleteTitle": "Unit セッションを削除しますか？",
   "confirm.deleteBody":

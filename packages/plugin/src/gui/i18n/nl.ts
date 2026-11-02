@@ -49,6 +49,7 @@ export default {
   "label.unit": "unit",
   "label.units": "units",
   "label.tokens": "tok",
+  "label.unitsProgress": "{{settled}} van {{total}}",
   "label.errors": "{{count}} fout(en)",
   "label.budget": "budget {{meter}} {{spent}} van {{total}}",
 
@@ -73,6 +74,7 @@ export default {
   "ask.notSent": "Niet verzonden: {{error}}",
   "ask.notDismissed": "Niet genegeerd: {{error}}",
   "ask.noResource": "(geen resource)",
+  "ask.progress": "({{current}} van {{total}})",
 
   "confirm.deleteTitle": "Unit-sessies verwijderen?",
   "confirm.deleteBody":

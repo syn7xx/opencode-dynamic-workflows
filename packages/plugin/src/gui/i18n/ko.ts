@@ -49,6 +49,7 @@ export default {
   "label.unit": "unit",
   "label.units": "units",
   "label.tokens": "tok",
+  "label.unitsProgress": "{{settled}} / {{total}}",
   "label.errors": "{{count}}개 오류",
   "label.budget": "예산 {{meter}} {{spent}} / {{total}}",
 
@@ -73,6 +74,7 @@ export default {
   "ask.notSent": "보내지 못함: {{error}}",
   "ask.notDismissed": "무시하지 못함: {{error}}",
   "ask.noResource": "(리소스 없음)",
+  "ask.progress": "({{current}} / {{total}})",
 
   "confirm.deleteTitle": "Unit 세션을 삭제할까요?",
   "confirm.deleteBody":

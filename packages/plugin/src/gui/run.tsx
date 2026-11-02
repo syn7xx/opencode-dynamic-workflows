@@ -165,7 +165,9 @@ export function RunPane(props: {
       <div class="wf-section">
         {ctx.t("section.units")}{" "}
         {props.run.units.length ? (
-          <span class="wf-muted">{`${settledUnits(props.run)} of ${props.run.units.length}`}</span>
+          <span class="wf-muted">
+            {ctx.t("label.unitsProgress", { settled: settledUnits(props.run), total: props.run.units.length })}
+          </span>
         ) : null}
       </div>
       <Show when={props.run.units.length > 0} fallback={<div class="wf-empty">{ctx.t("units.none")}</div>}>

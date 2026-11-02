@@ -50,6 +50,7 @@ export default {
   "label.unit": "单元",
   "label.units": "单元",
   "label.tokens": "tok",
+  "label.unitsProgress": "{{settled}} / {{total}}",
   "label.errors": "{{count}} 个错误",
   "label.budget": "预算 {{meter}} {{spent}} / {{total}}",
 
@@ -74,6 +75,7 @@ export default {
   "ask.notSent": "未发送：{{error}}",
   "ask.notDismissed": "未忽略：{{error}}",
   "ask.noResource": "（无资源）",
+  "ask.progress": "（{{current}} / {{total}}）",
 
   "confirm.deleteTitle": "删除单元会话？",
   "confirm.deleteBody": "删除 {{name}} 的 {{count}} 个单元会话？它们的记录将从 OpenCode 中移除；运行的记录会保留。",

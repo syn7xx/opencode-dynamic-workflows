@@ -50,6 +50,7 @@ export default {
   "label.unit": "Unit",
   "label.units": "Units",
   "label.tokens": "tok",
+  "label.unitsProgress": "{{settled}} von {{total}}",
   "label.errors": "{{count}} Fehler",
   "label.budget": "Budget {{meter}} {{spent}} von {{total}}",
 
@@ -74,6 +75,7 @@ export default {
   "ask.notSent": "Nicht gesendet: {{error}}",
   "ask.notDismissed": "Nicht verworfen: {{error}}",
   "ask.noResource": "(keine Ressource)",
+  "ask.progress": "({{current}} von {{total}})",
 
   "confirm.deleteTitle": "Unit-Sitzungen löschen?",
   "confirm.deleteBody":

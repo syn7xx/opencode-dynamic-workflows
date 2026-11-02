@@ -50,6 +50,7 @@ export default {
   "label.unit": "unit",
   "label.units": "units",
   "label.tokens": "tok",
+  "label.unitsProgress": "{{settled}} de {{total}}",
   "label.errors": "{{count}} erro(s)",
   "label.budget": "orçamento {{meter}} {{spent}} de {{total}}",
 
@@ -74,6 +75,7 @@ export default {
   "ask.notSent": "Não enviado: {{error}}",
   "ask.notDismissed": "Não descartado: {{error}}",
   "ask.noResource": "(sem recurso)",
+  "ask.progress": "({{current}} de {{total}})",
 
   "confirm.deleteTitle": "Excluir as sessões de Unit?",
   "confirm.deleteBody":

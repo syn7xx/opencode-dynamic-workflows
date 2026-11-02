@@ -46,7 +46,9 @@ export function AnswerView(props: { ctx: PluginContext; answer: AnswerBindings }
       <div class="wf-q-head">
         △ {kindLabel()}
         {question()?.header ? ` · ${question()!.header}` : ""}
-        {state().questions.length > 1 ? `  (${state().index + 1} of ${state().questions.length})` : ""}
+        {state().questions.length > 1
+          ? `  ${ctx.t("ask.progress", { current: state().index + 1, total: state().questions.length })}`
+          : ""}
       </div>
       <div class="wf-prompt">{question()?.prompt ?? ""}</div>
       <Show when={props.answer.interaction.permission}>

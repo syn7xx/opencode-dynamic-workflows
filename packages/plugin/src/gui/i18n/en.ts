@@ -46,6 +46,7 @@ export default {
   "label.unit": "unit",
   "label.units": "units",
   "label.tokens": "tok",
+  "label.unitsProgress": "{{settled}} of {{total}}",
   "label.errors": "{{count}} error(s)",
   "label.budget": "budget {{meter}} {{spent}} of {{total}}",
 
@@ -70,6 +71,7 @@ export default {
   "ask.notSent": "Not sent: {{error}}",
   "ask.notDismissed": "Not dismissed: {{error}}",
   "ask.noResource": "(no resource)",
+  "ask.progress": "({{current}} of {{total}})",
 
   "confirm.deleteTitle": "Delete Unit sessions?",
   "confirm.deleteBody":

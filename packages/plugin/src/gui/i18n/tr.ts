@@ -50,6 +50,7 @@ export default {
   "label.unit": "unit",
   "label.units": "unit",
   "label.tokens": "tok",
+  "label.unitsProgress": "{{settled}} / {{total}}",
   "label.errors": "{{count}} hata",
   "label.budget": "bütçe {{meter}} {{spent}} / {{total}}",
 
@@ -74,6 +75,7 @@ export default {
   "ask.notSent": "Gönderilmedi: {{error}}",
   "ask.notDismissed": "Yoksayılmadı: {{error}}",
   "ask.noResource": "(kaynak yok)",
+  "ask.progress": "({{current}} / {{total}})",
 
   "confirm.deleteTitle": "Unit oturumları silinsin mi?",
   "confirm.deleteBody":

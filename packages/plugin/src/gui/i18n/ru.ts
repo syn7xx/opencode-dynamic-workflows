@@ -50,6 +50,7 @@ export default {
   "label.unit": "юнит",
   "label.units": "юнитов",
   "label.tokens": "ток",
+  "label.unitsProgress": "{{settled}} из {{total}}",
   "label.errors": "ошибок: {{count}}",
   "label.budget": "бюджет {{meter}} {{spent}} из {{total}}",
 
@@ -74,6 +75,7 @@ export default {
   "ask.notSent": "Не отправлено: {{error}}",
   "ask.notDismissed": "Не отклонено: {{error}}",
   "ask.noResource": "(нет ресурса)",
+  "ask.progress": "({{current}} из {{total}})",
 
   "confirm.deleteTitle": "Удалить сессии юнитов?",
   "confirm.deleteBody":

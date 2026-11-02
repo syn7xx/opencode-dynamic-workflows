@@ -50,6 +50,7 @@ export default {
   "label.unit": "юніт",
   "label.units": "юнітів",
   "label.tokens": "ток",
+  "label.unitsProgress": "{{settled}} з {{total}}",
   "label.errors": "помилок: {{count}}",
   "label.budget": "бюджет {{meter}} {{spent}} з {{total}}",
 
@@ -74,6 +75,7 @@ export default {
   "ask.notSent": "Не надіслано: {{error}}",
   "ask.notDismissed": "Не відхилено: {{error}}",
   "ask.noResource": "(немає ресурсу)",
+  "ask.progress": "({{current}} з {{total}})",
 
   "confirm.deleteTitle": "Видалити сесії юнітів?",
   "confirm.deleteBody":

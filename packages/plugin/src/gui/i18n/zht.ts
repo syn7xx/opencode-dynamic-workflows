@@ -50,6 +50,7 @@ export default {
   "label.unit": "單元",
   "label.units": "單元",
   "label.tokens": "tok",
+  "label.unitsProgress": "{{settled}} / {{total}}",
   "label.errors": "{{count}} 個錯誤",
   "label.budget": "預算 {{meter}} {{spent}} / {{total}}",
 
@@ -74,6 +75,7 @@ export default {
   "ask.notSent": "未傳送：{{error}}",
   "ask.notDismissed": "未略過：{{error}}",
   "ask.noResource": "（無資源）",
+  "ask.progress": "（{{current}} / {{total}}）",
 
   "confirm.deleteTitle": "刪除單元工作階段？",
   "confirm.deleteBody": "刪除 {{name}} 的 {{count}} 個單元工作階段？它們的紀錄將從 OpenCode 中移除；執行的紀錄會保留。",
