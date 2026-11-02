@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.1](https://github.com/syn7xx/opencode-dynamic-workflows/compare/v0.6.0...v0.6.1) (2026-11-02)
+
+
+### Bug fixes
+
+* **gui:** make the Run view's phase row filter Units ([f3a0c21](https://github.com/syn7xx/opencode-dynamic-workflows/commit/f3a0c21344d542562dac1fbc56fabf211c37bff8))
+* **gui:** translate the 'of' in the Units and question progress ([891e2e3](https://github.com/syn7xx/opencode-dynamic-workflows/commit/891e2e3db6bcf125981c51664d3de6aa92e6f2a4))
+
 ## [0.6.0](https://github.com/syn7xx/opencode-dynamic-workflows/compare/v0.5.0...v0.6.0) (2026-11-02)
 
 
