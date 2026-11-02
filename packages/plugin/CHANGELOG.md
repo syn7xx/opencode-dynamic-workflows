@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.6.0](https://github.com/syn7xx/opencode-dynamic-workflows/compare/v0.5.0...v0.6.0) (2026-11-02)
+
+
+### Features
+
+* **gui:** add a Russian catalog, English stays the fallback ([f219038](https://github.com/syn7xx/opencode-dynamic-workflows/commit/f2190383224d5e17669860ecd1c964e01139c349))
+* **gui:** add eleven more UI catalogs (de, es, fr, it, nl, br, tr, ja, ko, uk, pl) ([d7ecff3](https://github.com/syn7xx/opencode-dynamic-workflows/commit/d7ecff3e8f2ff6f7efceff423f455720c2df761e))
+* **gui:** add Simplified and Traditional Chinese catalogs ([4407597](https://github.com/syn7xx/opencode-dynamic-workflows/commit/4407597b5012d3ba38104796d80e20f43a1419f1))
+* **gui:** add the desktop GUI plugin (side panel, strip, badge) ([5bda84f](https://github.com/syn7xx/opencode-dynamic-workflows/commit/5bda84fb7a60ee9786678f7952853743448e23a8))
+* **gui:** add the desktop GUI plugin for Workflows ([7d3f3ec](https://github.com/syn7xx/opencode-dynamic-workflows/commit/7d3f3ec384bc37dc226ba25b2c8758dc9e9f5567))
+* **gui:** jump from the waiting badge to the Run it stands for ([daa32dc](https://github.com/syn7xx/opencode-dynamic-workflows/commit/daa32dcc63f8bfe83c230676cf8ad0d710f8c9c6))
+* **gui:** show a tooltip on the "Open in browser" icon ([9a80fc9](https://github.com/syn7xx/opencode-dynamic-workflows/commit/9a80fc96ea52f9dc57d996e7fb6d0ee0823663d5))
+* **gui:** show token usage in the Unit list ([e0d55f9](https://github.com/syn7xx/opencode-dynamic-workflows/commit/e0d55f97709f9ec68634ff6b5f9dfaeb3c41fd1d))
+* make Workflows breadcrumbs clickable to navigate back ([b1ffb17](https://github.com/syn7xx/opencode-dynamic-workflows/commit/b1ffb17d906a54e0f2a9c0f84fdb6faa55e67671))
+
 ## [0.5.0](https://github.com/syn7xx/opencode-dynamic-workflows/compare/v0.4.1...v0.5.0) (2026-10-30)
 
 
