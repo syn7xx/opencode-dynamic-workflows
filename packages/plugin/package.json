@@ -53,13 +53,13 @@
     "access": "public"
   },
   "dependencies": {
-    "@opencode/plugin": "^2.2.3",
+    "@opencode/plugin": "^2.2.5",
     "zod": "4.1.8"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "21.0.4",
-    "@opencode/client": "2.2.3",
-    "@opencode/theme": "2.2.3",
+    "@opencode/client": "2.2.5",
+    "@opencode/theme": "2.2.5",
     "@opentui/core": "0.8.0",
     "@opentui/solid": "0.8.0",
     "happy-dom": "21.0.4",

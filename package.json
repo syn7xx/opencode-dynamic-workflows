@@ -26,8 +26,8 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "oxfmt": "0.75.0",
-    "oxlint": "1.90.0",
+    "oxfmt": "0.76.0",
+    "oxlint": "1.91.0",
     "typescript": "^5.9.3"
   }
 }
