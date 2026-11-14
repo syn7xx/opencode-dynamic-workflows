@@ -53,19 +53,19 @@
     "access": "public"
   },
   "dependencies": {
-    "@opencode/plugin": "^2.2.5",
+    "@opencode/plugin": "^2.2.7",
     "zod": "4.1.8"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "21.0.4",
-    "@opencode/client": "2.2.5",
-    "@opencode/theme": "2.2.5",
+    "@opencode/client": "2.2.7",
+    "@opencode/theme": "2.2.7",
     "@opentui/core": "0.8.0",
     "@opentui/solid": "0.8.0",
     "happy-dom": "21.0.4",
     "solid-js": "1.9.12",
-    "vite": "^8.3.5",
-    "vite-plugin-solid": "^2.11.15"
+    "vite": "^8.3.8",
+    "vite-plugin-solid": "^2.11.16"
   },
   "peerDependencies": {
     "@opentui/core": ">=0.8.0",
