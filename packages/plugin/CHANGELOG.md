@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.0](https://github.com/syn7xx/opencode-dynamic-workflows/compare/v0.6.3...v0.7.0) (2026-11-17)
+
+
+### Features
+
+* **unit:** continue a Unit in its existing session ([7564e21](https://github.com/syn7xx/opencode-dynamic-workflows/commit/7564e2176a258dccb24546a55cf6b04c7d9b93d0))
+* **unit:** continue a Unit in its existing session ([cbe1f6b](https://github.com/syn7xx/opencode-dynamic-workflows/commit/cbe1f6b28d9f508c01d2b8e7b1e215659df86f8e)), closes [#33](https://github.com/syn7xx/opencode-dynamic-workflows/issues/33)
+
+
+### Bug fixes
+
+* **deps:** align [@opentui](https://github.com/opentui) peer range with @opencode/plugin 2.2.7 ([9dd425a](https://github.com/syn7xx/opencode-dynamic-workflows/commit/9dd425a58fc3b73ccf6ceaf914b16c4895387523))
+* **deps:** pin [@opentui](https://github.com/opentui) to 0.8.1 to match @opencode/plugin 2.2.7 ([c55eb2f](https://github.com/syn7xx/opencode-dynamic-workflows/commit/c55eb2f0188aafc2db9452e516a3aafd50e7d395))
+
 ## [0.6.3](https://github.com/syn7xx/opencode-dynamic-workflows/compare/v0.6.2...v0.6.3) (2026-11-02)
 
 
