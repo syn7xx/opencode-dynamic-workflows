@@ -730,7 +730,11 @@ export async function setup(ctx: Context): Promise<() => Promise<void>> {
     getResult: (input, c) =>
       guard(c.error as never, async () => (await serviceForRun(input.runId)).getResult(input.runId)),
     getTranscript: (input, c) =>
-      guard(c.error as never, async () => (await serviceForRun(input.runId)).getTranscript(input.runId, input.unitId)),
+      guard(c.error as never, async () =>
+        (await serviceForRun(input.runId)).getTranscript(input.runId, input.unitId, {
+          whole: input.whole === true,
+        }),
+      ),
     getActivity: (input, c) =>
       guard(c.error as never, async () => ({
         entries: await (await serviceForRun(input.runId)).getActivity(input.runId),

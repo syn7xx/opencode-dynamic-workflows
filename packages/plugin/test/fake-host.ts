@@ -67,6 +67,15 @@ export interface FakeHostOptions {
    * succeeds. Lets a test break a RECEIPT's read while the Unit's own transcript read is fine.
    */
   contextErrorFrom?: number
+  /**
+   * With `contextError`: fail ONLY these `session.context` reads (1-based, matching {@link FakeHost.contexts}), leaving
+   * every other read working. This is what a transient host hiccup looks like, and it is the only shape that can tell
+   * "the boundary was not measurable" apart from "the transcript was unreadable".
+   *
+   * Takes precedence over {@link contextErrorFrom} when both are set (it is the more specific form); setting both on
+   * one host is a mistake, not a combination.
+   */
+  contextErrorAt?: number[]
   /** `interrupt` never resolves (and does not stop the session). */
   interruptHang?: boolean
   /** Worktree support: `changed` decides whether a Unit's worktree is kept; `active: false` = plugin not loaded there. */
@@ -309,7 +318,9 @@ export function createFakeHost(index: UnitIndex, options: FakeHostOptions = {}):
         contexts.push(input.sessionID)
         if (
           options.contextError &&
-          (options.contextErrorFrom === undefined || contexts.length >= options.contextErrorFrom)
+          (options.contextErrorAt
+            ? options.contextErrorAt.includes(contexts.length)
+            : options.contextErrorFrom === undefined || contexts.length >= options.contextErrorFrom)
         )
           throw new Error(options.contextError)
         const session = sessions.get(input.sessionID)

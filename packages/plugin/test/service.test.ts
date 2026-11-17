@@ -555,4 +555,79 @@ describe("transcripts", () => {
     expect(out.clipped).toBe(true)
     expect(out.messages[1]!.model).toBe("p/m")
   })
+
+  it("finds each turn's start in a shared session, including a repeated prompt", async () => {
+    const { turnBoundaries, toTranscript } = await import("../src/service/service")
+    const out = toTranscript("ses_x", [
+      { type: "user", content: [{ type: "text", text: "review" }] },
+      { type: "assistant", content: [{ type: "text", text: "a1" }] },
+      { type: "user", content: [{ type: "text", text: "fix" }] },
+      { type: "assistant", content: [{ type: "text", text: "a2" }] },
+      { type: "user", content: [{ type: "text", text: "review" }] },
+      { type: "assistant", content: [{ type: "text", text: "a3" }] },
+    ])
+    const bounds = turnBoundaries(out.messages, [
+      { ordinal: 1, prompt: "review" },
+      { ordinal: 2, prompt: "fix" },
+      { ordinal: 3, prompt: "review" },
+    ])
+    // A verbatim repeat resolves to the LATER occurrence: turns advance, so the first "review" cannot be turn 3.
+    expect([...bounds.entries()]).toEqual([
+      [1, 0],
+      [2, 2],
+      [3, 4],
+    ])
+  })
+
+  it("leaves an unmatched prompt out instead of guessing a boundary", async () => {
+    const { turnBoundaries, toTranscript } = await import("../src/service/service")
+    const out = toTranscript("ses_x", [
+      { type: "user", content: [{ type: "text", text: "review" }] },
+      { type: "assistant", content: [{ type: "text", text: "a1" }] },
+    ])
+    const bounds = turnBoundaries(out.messages, [
+      { ordinal: 1, prompt: "review" },
+      { ordinal: 2, prompt: "a prompt the host never sent" },
+    ])
+    expect(bounds.has(2)).toBe(false)
+  })
+
+  it("a continued Unit's transcript is its own turn; `whole` returns the conversation", async () => {
+    const { service: svc } = service({ approved: true })
+    const started = await svc.startRun({
+      source: `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"
+export default defineWorkflow({
+  meta: { name: "convo", description: "two turns in one session" },
+  async run({ agent }) {
+    const first = await agent("first turn", { label: "one", keepSession: true })
+    await first.resume("second turn", { label: "two" })
+    return "done"
+  },
+})
+`,
+      parentSessionID: "p",
+    })
+    const { run } = await started.done
+    const units = run.units.toSorted((a, b) => a.ordinal - b.ordinal)
+    expect(units).toHaveLength(2)
+    const second = units[1]!
+
+    const own = await svc.getTranscript(run.runId, second.unitId)
+    expect(own.turns).toBe(2)
+    expect(own.earlier).toBe(2)
+    // Only the second turn: its prompt and its answer, nothing from the first.
+    expect(own.messages.map((message) => message.role)).toEqual(["user", "assistant"])
+    expect(own.messages[0]!.parts[0]).toMatchObject({ text: "second turn" })
+
+    const whole = await svc.getTranscript(run.runId, second.unitId, { whole: true })
+    expect(whole.turns).toBe(2)
+    expect(whole.earlier).toBeUndefined()
+    expect(whole.messages.length).toBeGreaterThan(own.messages.length)
+
+    // The first turn is the whole session from its own start: no `earlier`, and it does not include turn two.
+    const firstTurn = await svc.getTranscript(run.runId, units[0]!.unitId)
+    expect(firstTurn.earlier).toBeUndefined()
+    expect(firstTurn.messages.map((message) => message.role)).toEqual(["user", "assistant"])
+    expect(firstTurn.messages[0]!.parts[0]).toMatchObject({ text: "first turn" })
+  })
 })

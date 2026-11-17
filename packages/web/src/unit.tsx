@@ -269,13 +269,13 @@ function TranscriptSection(props: { runId: string; unit: Unit }) {
   const [busy, setBusy] = createSignal(false)
   let request = 0
 
-  const load = async () => {
+  const load = async (whole = false) => {
     const ticket = ++request
     const { runId } = props
     const unitId = props.unit.unitId
     setBusy(true)
     try {
-      const result = await app.api.getTranscript(runId, unitId)
+      const result = await app.api.getTranscript(runId, unitId, whole)
       if (ticket !== request) return
       setData(result)
       setError(null)
@@ -286,6 +286,8 @@ function TranscriptSection(props: { runId: string; unit: Unit }) {
       if (ticket === request) setBusy(false)
     }
   }
+  /** The same conversation from its very first turn — what a continued Unit hides by default. */
+  const loadAll = () => load(true)
 
   // Another Unit (the [ ] keys reuse this view): start closed again.
   createEffect(
@@ -363,6 +365,20 @@ function TranscriptSection(props: { runId: string; unit: Unit }) {
             <div class="note" role="status">
               Some large tool inputs or outputs were clipped for display.
             </div>
+          </Show>
+          {/* A continued turn (`agent(prompt, { session })`): this view shows THIS turn, not the whole conversation. */}
+          <Show when={data()?.earlier}>
+            {(earlier) => (
+              <div class="note tx-earlier" role="status">
+                <span>
+                  Showing this turn only — {earlier()} earlier message{earlier() === 1 ? "" : "s"} of the same
+                  conversation {earlier() === 1 ? "is" : "are"} hidden.
+                </span>{" "}
+                <button type="button" class="btn btn-ghost btn-sm" onClick={() => void loadAll()}>
+                  Show whole conversation
+                </button>
+              </div>
+            )}
           </Show>
           <Show
             when={data()}

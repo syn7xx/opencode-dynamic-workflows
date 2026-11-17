@@ -8,7 +8,7 @@ import {
   type HostPermissionRule,
 } from "./host"
 import { emptyUsage, type Unit, type Usage } from "./protocol"
-import { DEFAULT_SUBAGENT, runUnit, stringifyError, type UnitRunResult } from "./runner"
+import { DEFAULT_SUBAGENT, runUnit, stringifyError, type TurnSlice, type UnitRunResult } from "./runner"
 import { toUnitOutput } from "./runs"
 import { AbortError, defaultConcurrency, Semaphore } from "./scheduler"
 import { resolveJsonSchema } from "./schema-bridge"
@@ -28,6 +28,8 @@ import type {
   AgentOpts,
   AskOptions,
   AskQuestion,
+  ContinuationOpts,
+  UnitHandle,
   UnitReceipt,
   UnitToolCall,
   WorkflowContext,
@@ -57,6 +59,13 @@ export interface EngineState {
   inflight: Set<Promise<unknown>>
   /** Worktrees kept by `isolation: "worktree"` Units that changed something. */
   worktrees: Array<{ unit: string; directory: string; branch: string | null }>
+  /**
+   * Sessions this Run may continue (`agent(…, { keepSession })`), with what the session decided at create time and
+   * whether the script has closed it. A continuation is a new Unit, but the session is shared, so both facts belong
+   * to the Run rather than to one Unit. `busy` is the one-turn-at-a-time guard: a session runs one prompt at a time,
+   * and two concurrent continuations would interleave in it.
+   */
+  sessions: Map<string, { subagent: string; closed: boolean; busy: boolean }>
 }
 
 export function createEngineState(): EngineState {
@@ -70,6 +79,7 @@ export function createEngineState(): EngineState {
     usage: emptyUsage(),
     inflight: new Set(),
     worktrees: [],
+    sessions: new Map(),
   }
 }
 
@@ -141,6 +151,17 @@ interface UnitOutcome {
    * receipt can read that session's tool calls.
    */
   replayed: boolean
+  /**
+   * Where this Unit's turn sits in its session's transcript, measured when the turn ended. `null` when it could not be
+   * measured (a setup failure, a replay, a host that would not read the transcript): a receipt then falls back to the
+   * whole session — correct only for a Unit that OWNS its session, hence {@link UnitOutcome.continued}.
+   */
+  slice: TurnSlice | null
+  /**
+   * True when this Unit ran in a session an EARLIER Unit created (`agent(prompt, { session })`). Then its session also
+   * holds other turns, so "the whole transcript" is never this Unit's evidence.
+   */
+  continued: boolean
 }
 
 /** One Unit a previous Run recorded, in {@link ReplayPlan}. */
@@ -222,6 +243,12 @@ function newUnit(input: {
   prompt: string
   model: string | null
   schema: boolean
+  /**
+   * A continuation knows its session before it runs (`agent(prompt, { session })`): the Unit is journaled with it
+   * from `queued` on, so a surface groups it with the turn it continues even while it queues.
+   */
+  sessionID?: string | null
+  location?: string | null
 }): Unit {
   return {
     unitId: input.unitId,
@@ -231,8 +258,8 @@ function newUnit(input: {
     subagent: input.subagent,
     phase: input.phase,
     status: "queued",
-    sessionID: null,
-    location: null,
+    sessionID: input.sessionID ?? null,
+    location: input.location ?? null,
     prompt: input.prompt,
     model: { requested: input.model, resolved: null },
     schema: input.schema,
@@ -245,6 +272,32 @@ function newUnit(input: {
 }
 
 const noAgentQuestions: UnitBinding["ask"] = async () => null
+
+/**
+ * Why a continuation may not be run as asked, or `null`. The session's create-time decisions — agent, model,
+ * directory, worktree isolation, permission ruleset — are not the host's to change: `session.prompt` takes a session
+ * id and text, nothing else. Accepting one here would silently run the turn on the old value, which is worse than an
+ * error an author fixes once.
+ */
+function continuationError(opts: AgentOpts<z.ZodType>): string | null {
+  const refused: Array<[string, unknown]> = [
+    ["subagent", opts.subagent],
+    ["agentType", opts.agentType],
+    ["model", opts.model],
+    ["effort", opts.effort],
+    ["location", opts.location],
+    ["isolation", opts.isolation],
+    ["permissions", opts.permissions],
+  ]
+  const named = refused.filter(([, value]) => value !== undefined).map(([name]) => name)
+  if (named.length === 0) return null
+  return (
+    `agent({ session }): a continued turn keeps its session's ${named.join(", ")} — ` +
+    `"${opts.session}" is already created with them, and the host's session.prompt takes only a session id and ` +
+    `text. Pass \`session\` alone (plus schema, retries, timeoutMs, label, phase), or start a new Unit with ` +
+    `agent(prompt, { ${named[0]}: … }).`
+  )
+}
 
 /** A Unit could not be set up (e.g. no worktree): it fails as a value like any other Unit. */
 class UnitSetupError extends Error {}
@@ -347,19 +400,41 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
     state.unitCount += 1
     const ordinal = state.unitCount
     const unitId = crypto.randomUUID()
-    const subagent = opts.subagent ?? opts.agentType ?? DEFAULT_SUBAGENT
+    /**
+     * A continuation runs in a session that already decided its agent, model, directory and ruleset. Those are
+     * refused rather than ignored (see {@link continuationError}): silently running on the old agent while the
+     * author believes they changed it is the one outcome worth an error.
+     */
+    const continuing = opts.session ?? null
+    const known = continuing ? state.sessions.get(continuing) : undefined
+    const subagent = continuing
+      ? (known?.subagent ?? opts.subagent ?? DEFAULT_SUBAGENT)
+      : (opts.subagent ?? opts.agentType ?? DEFAULT_SUBAGENT)
     const phase = opts.phase !== undefined ? `${prefix}${opts.phase}` : state.currentPhase
     const label = opts.label ? `${prefix}${opts.label}` : prefix ? `${prefix}${subagent}` : null
     const callerModel = input.callerModel ?? null
-    const modelChoice = resolveUnitModel(opts.model, opts.effort, callerModel)
+    // A continuation's model is the session's: `prompt` carries an id and text, nothing else.
+    const modelChoice = continuing
+      ? { model: undefined, warning: null }
+      : resolveUnitModel(opts.model, opts.effort, callerModel)
     const withVariant = modelChoice.model
     /** The session the Unit settled with, once one exists — where a receipt reads its calls from. For a replayed
      * Unit this is the session the ORIGINAL Run recorded (see the replay branch below), never a new one. */
     let sessionID: string | null = null
     /** Set when this Unit comes back from the previous Run's record (replay), so its receipt reads the old session. */
     let wasReplayed = false
+    /** The turn's slice of the session transcript, as the runner measured it (see `TurnSlice`). */
+    let slice: TurnSlice | null = null
     /** Every return goes through here: the value `agent()` returns, plus what a receipt carries. */
-    const outcome = (value: unknown): UnitOutcome => ({ value, unitId, label, sessionID, replayed: wasReplayed })
+    const outcome = (value: unknown): UnitOutcome => ({
+      value,
+      unitId,
+      label,
+      sessionID,
+      replayed: wasReplayed,
+      slice,
+      continued: continuing !== null,
+    })
     let schema: z.ZodType | undefined
     try {
       schema = resolveJsonSchema(opts.schema)
@@ -378,7 +453,43 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
       prompt,
       model: formatModel(withVariant),
       schema: schema !== undefined,
+      ...(continuing ? { sessionID: continuing } : {}),
     })
+
+    // A continuation may not re-decide what its session decided at create time. Checked before anything runs (and
+    // before replay) so the mistake is reported as a Unit failure, never as a turn on the wrong agent or model.
+    if (continuing) {
+      /**
+       * A rejected continuation must NOT be journaled with the id it named: `cleanupTargets` collects every Unit's
+       * `sessionID`, so stamping a stray id here would make "delete this Run's sessions" try to delete a session this
+       * Run never owned. From here on, a rejected unit is reported without one.
+       */
+      const reject = (error: string) => {
+        const rejected: Unit = { ...unit, sessionID: null, location: null }
+        emit({ ...rejected, status: "failed", error, startedAt: Date.now(), endedAt: Date.now() })
+        state.errors.push({ unit: label ?? subagent, prompt, subagent, error })
+        return outcome(null)
+      }
+      const refused = continuationError(opts)
+      if (refused) return reject(refused)
+      const session = state.sessions.get(continuing)
+      if (!session) {
+        // Only a session THIS Run opened (or replayed from its own record) can be continued: a stray id — another
+        // session in the same OpenCode, the caller's own chat — must never become a Unit's scratchpad.
+        return reject(
+          `agent({ session: ${JSON.stringify(continuing)} }): not a session this Run can continue. ` +
+            `Take the id from \`agent(prompt, { keepSession: true })\` (its \`sessionID\`) or from a handle's \`resume\`.`,
+        )
+      }
+      if (session.closed)
+        return reject(
+          `agent({ session: ${JSON.stringify(continuing)} }): that session was closed; its conversation cannot be continued`,
+        )
+      if (session.busy)
+        return reject(
+          `agent({ session: ${JSON.stringify(continuing)} }): that session is running another turn; a session takes one turn at a time`,
+        )
+    }
 
     if (ordinal > limits.maxUnits) {
       hitLimit(`limit reached: this Run tried to start more than ${limits.maxUnits} Units (limits.maxUnits)`)
@@ -393,6 +504,14 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
       const record = plan.units.get(ordinal)
       if (record && record.prompt === prompt) {
         const value = replayed(unit, record, schema)
+        // A replayed continuation still needs its session remembered: the rest of the script may continue it live,
+        // and after a resume `state.sessions` starts empty. Registered before the return, for both outcomes. The
+        // agent is the one the record names, never the default — a replayed turn must keep the agent it ran as.
+        if (continuing) state.sessions.set(continuing, { subagent: record.subagent, closed: false, busy: false })
+        // A replayed FIRST turn keeps the session id the original Run recorded, so the script can go on with the
+        // conversation live — the same session, the same transcript the earlier Run left behind.
+        else if (record.sessionID)
+          state.sessions.set(record.sessionID, { subagent: record.subagent, closed: false, busy: false })
         if (value) {
           const done: Unit = {
             ...unit,
@@ -434,6 +553,13 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
       events?.onLog?.(modelChoice.warning)
     }
     try {
+      // A continuation takes the session for its turn before queueing, so a second turn on it fails legibly
+      // instead of interleaving in the same transcript.
+      if (continuing) {
+        const session = state.sessions.get(continuing)
+        if (session) session.busy = true
+        else state.sessions.set(continuing, { subagent, closed: false, busy: true })
+      }
       const value = await limiter.run(async () => {
         let current: Unit = { ...unit, status: "running", startedAt: Date.now() }
         emit(current)
@@ -446,7 +572,8 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
             throw new UnitSetupError(`could not create a worktree: ${stringifyError(error)}`)
           }
         }
-        const unitLocation = opts.location ?? worktree?.directory
+        // A continuation runs where its session lives; the worktree/location options are refused for it above.
+        const unitLocation = continuing ? null : (opts.location ?? worktree?.directory)
         const result: UnitRunResult = await runUnit(input.host, input.index, {
           runId: input.runId,
           unitId,
@@ -461,6 +588,7 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
                     : `the workflow plugin is not active in ${directory}; configure it in a committed opencode.json (or globally) so Units there can use it`,
               }
             : {}),
+          ...(continuing ? { continueSessionID: continuing } : {}),
           parentSessionID: input.parentSessionID,
           ordinal,
           prompt,
@@ -476,12 +604,14 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
           permissions: [...(input.permissions ?? []), ...(opts.permissions ?? [])],
           ask: noAgentQuestions,
           permissionPolicy: input.permissionPolicy ?? (() => "deny"),
-          onSession: (id, stop, resolved) => {
+          onSession: (id, stop, resolved, sessionDirectory) => {
             sessionID = id
             current = {
               ...current,
               sessionID: id,
-              location: unitLocation ?? input.location,
+              // A continuation runs where its SESSION lives — the host reports that, and for a turn continuing a
+              // worktree Unit it differs from the Run's root. Question routing and policy key on this.
+              location: unitLocation ?? sessionDirectory ?? input.location,
               model: { requested: current.model.requested, resolved: formatModel(resolved) },
             }
             const binding = input.index.get(id)
@@ -525,6 +655,9 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
         // The session this Unit settled with — the same value `onSession` and the settled Unit carry. A Unit whose
         // session never existed (a replay, a setup failure) keeps `null`.
         sessionID = result.sessionID ?? current.sessionID
+        // What the runner measured for this turn: a receipt reads exactly its own messages, even if it is read after a
+        // later turn has added more (or after a repair turn moved the "last user message").
+        slice = result.slice
         const settled: Unit = {
           ...current,
           sessionID,
@@ -544,6 +677,12 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
         state.errors.push({ unit: label ?? subagent, prompt, subagent, error: result.error })
         return null
       }, signal)
+      // The session exists: remember what it decided at create time, so a continuation inherits its agent rather than
+      // guessing one. `keepSession` decides what `agent()` RESOLVES to (a handle), not whether the session may be
+      // continued — `closeSession` is the only thing that ends a conversation.
+      if (sessionID && !continuing) {
+        state.sessions.set(sessionID, { subagent, closed: false, busy: false })
+      }
       return outcome(value)
     } catch (err) {
       if (err instanceof UnitSetupError) {
@@ -558,6 +697,16 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
         return outcome(null)
       }
       throw err
+    } finally {
+      // The turn is over either way: the session is free for the next one. Its `closed` flag is only set by an
+      // explicit `close` (see `closeSession`) — except when the Run's signal stopped this Unit, which already halted
+      // the session: interrupting it again at Run end would report a second stop nobody asked for.
+      const session = continuing ? state.sessions.get(continuing) : undefined
+      if (session) session.busy = false
+      if (signal.aborted && sessionID) {
+        const own = state.sessions.get(sessionID)
+        if (own) own.closed = true
+      }
     }
   }
 
@@ -595,6 +744,14 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
    *   path stays strict.
    */
   const readToolCalls = async (outcome: UnitOutcome, sessionID: string): Promise<UnitToolCall[]> => {
+    // A turn whose slice could not be measured has no honest evidence to report. For a Unit that OWNS its session the
+    // whole transcript IS its turn, so it can still be read. For a CONTINUATION it is not: the session holds earlier
+    // turns, so the whole transcript would hand back calls this turn never made. `[]` (unknown) there — decided BEFORE
+    // reading, because a read that then fails must not turn "unknown" into an error either.
+    if (!outcome.replayed && !outcome.slice && outcome.continued) {
+      noteUnknown(outcome, "its turn could not be delimited in the session it continues")
+      return []
+    }
     // A replayed Unit's evidence can never fail the resumed Run, so every step below is guarded by this flag.
     const bestEffort = outcome.replayed
     let messages: readonly HostMessage[]
@@ -612,7 +769,14 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
     }
     try {
       const calls: UnitToolCall[] = []
-      for (const message of messages) {
+      // A continuation shares its session with earlier turns: a receipt is this Unit's EVIDENCE, so it reports the
+      // calls THIS turn made, not the whole conversation's. The boundary is the slice the runner MEASURED when the
+      // turn ended — not a boundary re-derived from "the last user message", which a repair turn would move and a
+      // later turn would move again if the receipt were read late. A REPLAYED Unit is the exception: its receipt is
+      // deliberately the ORIGINAL Run's whole record, unchanged by this.
+      const scope =
+        outcome.replayed || !outcome.slice ? messages : messages.slice(outcome.slice.start, outcome.slice.end)
+      for (const message of scope) {
         for (const part of message.content ?? []) {
           if (part.type !== "tool") continue
           calls.push({
@@ -638,23 +802,16 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
   }
 
   /**
-   * The receipt `agent(…, { receipts: true })` resolves to. `toolCalls` is a lazily memoized getter: the transcript is
-   * read on first access and never before, so a Workflow that only wants the value pays nothing. A Unit that never
-   * had a session (a setup failure, a Unit skipped before creating one) has nothing to read and reports `[]` without
-   * a host call; a replayed Unit instead carries the id the original Run recorded, so its receipt can still read the
-   * earlier session — and reports `[]` (unknown) when that session is gone or cannot be read.
+   * The lazily-read `toolCalls` of a receipt or handle. NON-ENUMERABLE, deliberately: a receipt is often just
+   * `return`ed, and everything downstream of a Run serializes its result (`previewResult` for the store,
+   * `result.json` in the journal, `JSON.stringify` in a script). An enumerable getter would be read by every one of
+   * those — a transcript read nobody asked for, and `JSON.stringify` would journal `"toolCalls": {}` (a promise is
+   * not JSON), which is evidence-shaped but empty.
    */
-  const receiptOf = (outcome: UnitOutcome): UnitReceipt<unknown> => {
+  const defineToolCalls = <T extends UnitReceipt<unknown>>(target: T, outcome: UnitOutcome): T => {
     const { sessionID } = outcome
     let toolCalls: Promise<UnitToolCall[]> | undefined
-    const receipt = { value: outcome.value, unitId: outcome.unitId } as UnitReceipt<unknown>
-    Object.defineProperty(receipt, "toolCalls", {
-      // NON-ENUMERABLE, deliberately: a receipt is often just `return`ed, and everything downstream of a Run
-      // serializes its result (`previewResult` for the store, `result.json` in the journal, `JSON.stringify` in a
-      // script). An enumerable getter would be read by every one of those — a transcript read nobody asked for, and
-      // `JSON.stringify` would journal `"toolCalls": {}` (a promise is not JSON), which is evidence-shaped but empty.
-      // The trade-off is that `{ ...receipt }` does not copy `toolCalls`; copying a lazy promise like that would be
-      // useless anyway. `structuredClone(receipt)` works, and yields `{ value, unitId }`.
+    Object.defineProperty(target, "toolCalls", {
       enumerable: false,
       configurable: true,
       get() {
@@ -676,14 +833,96 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
         return toolCalls
       },
     })
-    return receipt
+    return target
   }
 
-  const agent = ((prompt: string, opts: AgentOpts<z.ZodType> & { receipts?: boolean } = {}) => {
-    // `receipts` is engine-level only: it decides what `agent()` RESOLVES to, and never reaches the Unit's options.
-    const { receipts, ...unitOpts } = opts
+  /**
+   * The receipt `agent(…, { receipts: true })` resolves to. A Unit that never had a session (a setup failure, a Unit
+   * skipped before creating one) has nothing to read and reports `[]` without a host call; a replayed Unit instead
+   * carries the id the original Run recorded, so its receipt can still read the earlier session — and reports `[]`
+   * (unknown) when that session is gone or cannot be read.
+   */
+  const receiptOf = (outcome: UnitOutcome): UnitReceipt<unknown> =>
+    defineToolCalls({ value: outcome.value, unitId: outcome.unitId } as UnitReceipt<unknown>, outcome)
+
+  /**
+   * Close a conversation: mark it closed (a later `agent({ session })` fails legibly) and interrupt the session so no
+   * work outlives the Run. Never throws — a Run must not fail because a session could not be stopped.
+   */
+  const closeSession = async (sessionID: string): Promise<void> => {
+    const session = state.sessions.get(sessionID)
+    if (session) session.closed = true
+    await Promise.resolve()
+      .then(() => input.host.session.interrupt({ sessionID }))
+      .catch(() => {})
+  }
+
+  /**
+   * The handle `agent(…, { keepSession: true })` resolves to: a receipt plus the session id and the two things a
+   * conversation needs — `resume` (next turn, same session) and `close` (end it).
+   *
+   * Serializes to `{ value, unitId, sessionID }`: `toolCalls`, `resume` and `close` are non-enumerable, so a handle
+   * returned from `run()` journals what it is, not a function table.
+   */
+  const handleOf = (outcome: UnitOutcome): UnitHandle<unknown> => {
+    const { sessionID } = outcome
+    const handle = { value: outcome.value, unitId: outcome.unitId, sessionID } as UnitHandle<unknown>
+    Object.defineProperties(handle, {
+      resume: {
+        enumerable: false,
+        configurable: true,
+        value: (prompt: string, opts: ContinuationOpts<z.ZodType> = {}) => {
+          if (!sessionID) {
+            return Promise.resolve(
+              handleFailed(
+                `resume: Unit ${outcome.label ?? outcome.unitId} never had a session (it failed before one existed), so there is nothing to continue`,
+                outcome,
+              ),
+            )
+          }
+          return agent(prompt, { ...opts, session: sessionID, keepSession: true }) as Promise<UnitHandle<unknown>>
+        },
+      },
+      close: {
+        enumerable: false,
+        configurable: true,
+        value: () => (sessionID ? closeSession(sessionID) : Promise.resolve()),
+      },
+    })
+    return defineToolCalls(handle, outcome)
+  }
+
+  /**
+   * A `resume()` with nothing to resume. It is recorded in `errors` like any other dropped Unit — never a rejected
+   * promise, because `agent()` does not throw and its conversational counterpart should not either — and it hands
+   * back a null-valued handle that KEEPS the original `unitId` (it did not run, so it is not a new Unit) with no
+   * session, so a mistaken second `resume()` fails the same way instead of starting something.
+   */
+  const handleFailed = (error: string, from: UnitOutcome): UnitHandle<unknown> => {
+    state.errors.push({
+      unit: from.label ?? from.unitId,
+      prompt: "(resume: no session)",
+      subagent: "(unknown)",
+      error,
+    })
+    return handleOf({
+      value: null,
+      unitId: from.unitId,
+      label: from.label,
+      sessionID: null,
+      replayed: false,
+      slice: null,
+      continued: from.continued,
+    })
+  }
+
+  const agent = ((prompt: string, opts: AgentOpts<z.ZodType> & { receipts?: boolean; keepSession?: boolean } = {}) => {
+    // `receipts` and `keepSession` are engine-level only: they decide what `agent()` RESOLVES to, and never reach the
+    // Unit's options (`keepSession` is remembered per session by the engine itself).
+    const { receipts, keepSession: _keepSession, ...unitOpts } = opts
+    const keep = opts.keepSession === true
     const task = runOne(prompt, unitOpts)
-    const result = receipts ? task.then(receiptOf) : task.then((outcome) => outcome.value)
+    const result = keep || receipts ? task.then(keep ? handleOf : receiptOf) : task.then((outcome) => outcome.value)
     // Track and return the SAME promise. The author may never await it (fire-and-forget Units are supported), so the
     // tracked promise has to be the one they hold: an unhandled rejection is marked handled here, and the drain in
     // `runWorkflow`'s `finally` waits for exactly what ran — not a copy of it that settles a microtask later.

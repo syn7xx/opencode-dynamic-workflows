@@ -25,7 +25,7 @@ export interface WorkflowApi {
   getRun(input: { runId: string }): Promise<{ run: Run; live: boolean }>
   getUnit(input: { runId: string; unitId: string }): Promise<{ unit: Unit }>
   getResult(input: { runId: string }): Promise<{ runId: string; status: RunStatus; result: unknown }>
-  getTranscript(input: { runId: string; unitId: string }): Promise<GetTranscriptOutput>
+  getTranscript(input: { runId: string; unitId: string; whole?: boolean }): Promise<GetTranscriptOutput>
   getActivity(input: { runId: string }): Promise<{ entries: ActivityEntry[] }>
   listWorkflows(): Promise<ListWorkflowsOutput>
   startRun(input: {

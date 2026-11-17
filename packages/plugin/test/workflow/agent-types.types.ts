@@ -103,6 +103,62 @@ async function proof() {
   // CONTROL — same for a boolean that only settles at run time.
   // @ts-expect-error — a non-literal flag matches neither overload.
   await agent("rate it", { schema: Finding, receipts: maybeReceipts })
+
+  // GREEN — `{ keepSession: true }` resolves to a handle: a receipt plus the session and `resume`.
+  const handle = await agent("review", { schema: Finding, keepSession: true })
+  const _handleTitle: string | undefined = handle.value?.title
+  const _session: string | null = handle.sessionID
+  const _handleCalls: Promise<UnitToolCall[]> = handle.toolCalls
+  void _handleTitle
+  void _session
+  void _handleCalls
+
+  // GREEN — `resume` keeps the schema's type across the conversation, and returns a handle again.
+  const next = await handle.resume("re-check", { schema: Finding })
+  const _nextTitle: string | undefined = next.value?.title
+  const _nextSession: string | null = next.sessionID
+  void _nextTitle
+  void _nextSession
+
+  // GREEN — a text conversation: `resume` without a schema resolves to a handle of `string | null`.
+  const textHandle = await agent("draft", { keepSession: true })
+  const _draft: string | null = textHandle.value
+  void _draft
+  const redraft = await textHandle.resume("polish it")
+  const _polished: string | null = redraft.value
+  void _polished
+
+  // CONTROL — a handle is not the bare value: a struct field access on the handle itself is an error.
+  // @ts-expect-error — a handle has `value`, not the schema's fields.
+  void handle.title
+
+  // CONTROL — the session fixed at create time cannot be re-decided by a continuation.
+  // @ts-expect-error — `subagent` is not a continuation option.
+  await handle.resume("next", { subagent: "reviewer" })
+  // @ts-expect-error — `model` is not a continuation option.
+  await handle.resume("next", { model: "acme/other" })
+  // @ts-expect-error — a continuation is never itself a continuation.
+  await handle.resume("next", { session: "ses_x" })
+  // @ts-expect-error — nor does it take `keepSession`; a handle is already a handle.
+  await handle.resume("next", { keepSession: true })
+  // @ts-expect-error — nor `receipts`: a handle carries the receipt.
+  await handle.resume("next", { receipts: true })
+
+  // GREEN — `keepSession` wins over `receipts`: a handle already IS a receipt, so the combination compiles.
+  const both = await agent("review", { schema: Finding, keepSession: true, receipts: true })
+  const _bothTitle: string | undefined = both.value?.title
+  const _bothSession: string | null = both.sessionID
+  void _bothTitle
+  void _bothSession
+
+  // CONTROL — `keepSession` is not an `AgentOpts` member either, for the same reason as `receipts`.
+  // @ts-expect-error — `keepSession` lives in the overloads, not in `AgentOpts`.
+  const optsWithKeepSession: AgentOpts<typeof Finding> = { schema: Finding, keepSession: true }
+  void optsWithKeepSession
+
+  // CONTROL — a widened boolean selects no overload, exactly like `receipts`.
+  // @ts-expect-error — a non-literal flag matches neither overload.
+  await agent("rate it", { schema: Finding, keepSession: maybeReceipts })
 }
 
 void proof

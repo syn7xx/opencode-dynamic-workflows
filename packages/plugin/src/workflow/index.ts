@@ -218,6 +218,19 @@ export interface AgentOpts<S extends z.ZodType | JsonSchemaInput | undefined = u
   isolation?: "worktree"
   /** Permission rules for this Unit's session, applied after the Workflow's `meta.permissions`. */
   permissions?: PermissionRule[]
+  /**
+   * Send this turn into an EXISTING Unit session instead of creating one — the follow-up half of
+   * `agent(prompt, { keepSession: true })`. The Unit is still a new Unit of the Run (its own id, ordinal and prompt),
+   * but it runs in that session, so it sees the earlier turn's transcript and tool results, and reuses its prompt
+   * cache.
+   *
+   * Only `schema`, `retries`, `timeoutMs`, `label` and `phase` may accompany it. Everything the session already
+   * decided — `subagent`/`agentType`, `model`, `effort`, `location`, `isolation`, `permissions` — is refused
+   * rather than silently ignored: the host's `prompt` takes a session id and text, nothing else.
+   *
+   * One turn at a time: never run two calls against the same session concurrently.
+   */
+  session?: string
 }
 
 /**
@@ -234,13 +247,60 @@ export type UnitValue<S extends z.ZodType | JsonSchemaInput | undefined> = S ext
     : unknown
 
 /**
+ * What `agent(…, { keepSession: true })` resolves to: the same receipt a typed or text Unit would produce (with
+ * `{ receipts: true }` folded in), plus the session's id and a `resume` that sends the next turn into it.
+ *
+ * A continuation is still a **new Unit** of the Run — its own `unitId`, ordinal and prompt, journaled and replayed
+ * like any other — it just runs in an existing session. So the Run's accounting, limits and UI stay untouched: two
+ * Units that share a `sessionID` are two turns of one conversation.
+ */
+export interface UnitHandle<T> extends UnitReceipt<T> {
+  /**
+   * The session this Unit ran in, or `null` when it never had one (a setup failure, or a Unit stopped before its
+   * session existed). `resume` reports a Run error and resolves to `null` when it is `null`.
+   */
+  readonly sessionID: string | null
+  /**
+   * Send the next turn into this same session and resolve to a new handle — the conversation continues where the
+   * last turn stopped, with its transcript, its tool results and its prompt cache. `session`, `keepSession` and
+   * `receipts` are not accepted here: a continuation is always a continuation.
+   *
+   * One turn at a time: never `resume` (or `agent({ session })`) twice concurrently on the same session.
+   */
+  resume<S extends z.ZodType | JsonSchemaInput | undefined = undefined>(
+    prompt: string,
+    opts?: ContinuationOpts<S>,
+  ): Promise<UnitHandle<UnitValue<S>>>
+  /**
+   * End the conversation: a later `agent({ session })` or `resume` on it fails legibly, and the session is
+   * interrupted so nothing keeps running in it. Never throws.
+   *
+   * Not required for correctness: an idle kept session runs nothing, a Run's active turn is stopped with its Unit,
+   * and the Run's cleanup owns retention. Call it when the conversation is over and you want that to be explicit.
+   */
+  close(): Promise<void>
+}
+
+/**
+ * Options a continuation accepts. Everything the session already decided at create time — its `subagent`, `model`,
+ * `location`, worktree isolation and permission ruleset — is omitted: the host's `prompt` takes a session id and
+ * text, nothing else. What remains is per-turn: `schema`, `retries`, `timeoutMs`, `label`, `phase`.
+ */
+export type ContinuationOpts<S extends z.ZodType | JsonSchemaInput | undefined = undefined> = Omit<
+  AgentOpts<S>,
+  "subagent" | "agentType" | "model" | "effort" | "location" | "isolation" | "permissions" | "session" | "keepSession"
+>
+
+/**
  * Runs one Unit: prompts a (by default freshly-created) child session under the named subagent. With a
  * `schema`, it resolves to that schema's inferred type (validated structured output); without one, to the
  * Unit's final assistant text. Either way `null` on failure/skip (the drop is recorded in
  * {@link WorkflowContext.errors}).
  *
  * Passing `{ receipts: true }` resolves to a {@link UnitReceipt} instead — the same value, plus the Unit's id and
- * what its session actually did. The Unit itself is identical either way: one call, one Unit, one session.
+ * what its session actually did. With `{ keepSession: true }` it resolves to a {@link UnitHandle}: a receipt plus
+ * `sessionID`, `resume` and `close`, for a conversation. Both flags sit in these overloads, not in
+ * {@link AgentOpts}, so the resolved type follows what the call site wrote.
  *
  * `receipts` is deliberately NOT part of {@link AgentOpts}: it lives in these overloads so the resolved type follows
  * the flag. Write `receipts: true` inline (or on an `as const` object) — a plain `boolean` variable cannot select
@@ -249,11 +309,19 @@ export type UnitValue<S extends z.ZodType | JsonSchemaInput | undefined> = S ext
 export interface AgentFn {
   <S extends z.ZodType | JsonSchemaInput | undefined = undefined>(
     prompt: string,
+    opts: AgentOpts<S> & { keepSession: true },
+  ): Promise<UnitHandle<UnitValue<S>>>
+  <S extends z.ZodType | JsonSchemaInput | undefined = undefined>(
+    prompt: string,
+    opts: AgentOpts<S> & { keepSession: true; receipts?: boolean },
+  ): Promise<UnitHandle<UnitValue<S>>>
+  <S extends z.ZodType | JsonSchemaInput | undefined = undefined>(
+    prompt: string,
     opts: AgentOpts<S> & { receipts: true },
   ): Promise<UnitReceipt<UnitValue<S>>>
   <S extends z.ZodType | JsonSchemaInput | undefined = undefined>(
     prompt: string,
-    opts?: AgentOpts<S> & { receipts?: false },
+    opts?: AgentOpts<S> & { receipts?: false; keepSession?: false },
   ): Promise<UnitValue<S> | null>
 }
 
