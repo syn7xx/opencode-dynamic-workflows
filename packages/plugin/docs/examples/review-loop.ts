@@ -53,7 +53,7 @@ export default defineWorkflow({
           break
         }
         phase("re-review")
-        review = await review.resume(
+        review = await review.ask(
           "Re-check your previous findings against the fixes just made. " +
             "Report only the issues that are still present after the fixes.",
           { schema: Finding },

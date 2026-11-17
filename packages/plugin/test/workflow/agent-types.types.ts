@@ -114,7 +114,7 @@ async function proof() {
   void _handleCalls
 
   // GREEN — `resume` keeps the schema's type across the conversation, and returns a handle again.
-  const next = await handle.resume("re-check", { schema: Finding })
+  const next = await handle.ask("re-check", { schema: Finding })
   const _nextTitle: string | undefined = next.value?.title
   const _nextSession: string | null = next.sessionID
   void _nextTitle
@@ -124,7 +124,7 @@ async function proof() {
   const textHandle = await agent("draft", { keepSession: true })
   const _draft: string | null = textHandle.value
   void _draft
-  const redraft = await textHandle.resume("polish it")
+  const redraft = await textHandle.ask("polish it")
   const _polished: string | null = redraft.value
   void _polished
 
@@ -134,15 +134,15 @@ async function proof() {
 
   // CONTROL — the session fixed at create time cannot be re-decided by a continuation.
   // @ts-expect-error — `subagent` is not a continuation option.
-  await handle.resume("next", { subagent: "reviewer" })
+  await handle.ask("next", { subagent: "reviewer" })
   // @ts-expect-error — `model` is not a continuation option.
-  await handle.resume("next", { model: "acme/other" })
+  await handle.ask("next", { model: "acme/other" })
   // @ts-expect-error — a continuation is never itself a continuation.
-  await handle.resume("next", { session: "ses_x" })
+  await handle.ask("next", { session: "ses_x" })
   // @ts-expect-error — nor does it take `keepSession`; a handle is already a handle.
-  await handle.resume("next", { keepSession: true })
+  await handle.ask("next", { keepSession: true })
   // @ts-expect-error — nor `receipts`: a handle carries the receipt.
-  await handle.resume("next", { receipts: true })
+  await handle.ask("next", { receipts: true })
 
   // GREEN — `keepSession` wins over `receipts`: a handle already IS a receipt, so the combination compiles.
   const both = await agent("review", { schema: Finding, keepSession: true, receipts: true })

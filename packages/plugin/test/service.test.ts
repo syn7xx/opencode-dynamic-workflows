@@ -600,7 +600,7 @@ export default defineWorkflow({
   meta: { name: "convo", description: "two turns in one session" },
   async run({ agent }) {
     const first = await agent("first turn", { label: "one", keepSession: true })
-    await first.resume("second turn", { label: "two" })
+    await first.ask("second turn", { label: "two" })
     return "done"
   },
 })
