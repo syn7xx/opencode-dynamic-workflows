@@ -327,7 +327,7 @@ The [`dynamic-workflows` skill](https://github.com/syn7xx/opencode-dynamic-workf
 
 | Member | What it does |
 | --- | --- |
-| `agent(prompt, opts?)` | One Unit. Returns its final text, or with `schema` a validated value. A failed Unit returns `null` and is added to `errors`; it never throws. With `{ receipts: true }` it returns `{ value, unitId, toolCalls }` instead — see [Asserting what a Unit did](#asserting-what-a-unit-did). With `{ keepSession: true }` it returns a handle with `sessionID` and `resume()` — see [Continuing a Unit](#continuing-a-unit). |
+| `agent(prompt, opts?)` | One Unit. Returns its final text, or with `schema` a validated value. A failed Unit returns `null` and is added to `errors`; it never throws. With `{ receipts: true }` it returns `{ value, unitId, toolCalls }` instead — see [Asserting what a Unit did](#asserting-what-a-unit-did). With `{ keepSession: true }` it returns a handle with `sessionID` and `ask()` — see [Continuing a Unit](#continuing-a-unit). |
 | `pipeline(items, ...stages)` | Each item runs through its stages on its own, with no barrier between items. Stages get `(previous, item, index)`. |
 | `parallel(thunks)` | Runs thunks concurrently and waits for all of them (a barrier). Failures become `null`. |
 | `collect(xs)` | Drops the `null`s, with the narrowed type. |
@@ -439,14 +439,14 @@ let review = await agent("Review the diff. List every issue you find.", {
 
 for (let round = 0; round < 3 && (review.value?.issues.length ?? 0) > 0; round++) {
   await agent(`Fix exactly these:\n${JSON.stringify(review.value.issues)}`, { label: `fix-${round}` })
-  review = await review.resume("Re-check your previous findings against the fixes you just made.", {
+  review = await review.ask("Re-check your previous findings against the fixes you just made.", {
     schema: Findings,
   })
 }
 ```
 
 `keepSession: true` resolves to a handle — the same `{ value, unitId, toolCalls }` a receipt has, plus `sessionID`,
-`resume(prompt, opts?)` and `close()`. `resume` sends the next turn into that session, so it sees its own earlier
+`ask(prompt, opts?)` and `close()`. `ask` sends the next turn into that session, so it sees its own earlier
 transcript and tool results (the files it already read) and reuses the prompt cache. For a review → fix loop that is
 the difference between re-reading the repository every round and continuing where the last turn stopped.
 
@@ -462,7 +462,7 @@ one of those on a continuation is an **error** (the turn fails with a legible me
 silent ignore. Start a new Unit when the agent or model must change. Per-turn options still work: `schema`, `retries`,
 `timeoutMs`, `label`, `phase` — a text turn followed by a typed one on the same session is normal for this loop.
 
-Conversations are **sequential**: one turn at a time per session, so a second concurrent `resume` on the same handle
+Conversations are **sequential**: one turn at a time per session, so a second concurrent `ask` on the same handle
 is refused. Usage and `toolCalls` are reported **per turn** (what that turn spent and called, not the session's
 lifetime totals), so `budget` and receipts stay meaningful across a long conversation. `close()` is optional — an idle
 kept session runs nothing, and the Run's cleanup still owns its retention — but it ends the conversation, so a later
@@ -481,7 +481,7 @@ falling back to the whole session. Reporting another turn's text as this turn's 
 
 `agent(prompt, { session })` does the same without a handle, for when you thread the id through your own state.
 `{ keepSession: true }` has to be written inline (or on an `as const` object), like `receipts: true`: a plain
-`boolean` variable selects no overload. A handle journals as `{ value, unitId, sessionID }` — `toolCalls`, `resume`
+`boolean` variable selects no overload. A handle journals as `{ value, unitId, sessionID }` — `toolCalls`, `ask`
 and `close` are not enumerable.
 
 ### Resume

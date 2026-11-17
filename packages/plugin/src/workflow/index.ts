@@ -248,7 +248,7 @@ export type UnitValue<S extends z.ZodType | JsonSchemaInput | undefined> = S ext
 
 /**
  * What `agent(…, { keepSession: true })` resolves to: the same receipt a typed or text Unit would produce (with
- * `{ receipts: true }` folded in), plus the session's id and a `resume` that sends the next turn into it.
+ * `{ receipts: true }` folded in), plus the session's id and an `ask` that sends the next turn into it.
  *
  * A continuation is still a **new Unit** of the Run — its own `unitId`, ordinal and prompt, journaled and replayed
  * like any other — it just runs in an existing session. So the Run's accounting, limits and UI stay untouched: two
@@ -257,22 +257,26 @@ export type UnitValue<S extends z.ZodType | JsonSchemaInput | undefined> = S ext
 export interface UnitHandle<T> extends UnitReceipt<T> {
   /**
    * The session this Unit ran in, or `null` when it never had one (a setup failure, or a Unit stopped before its
-   * session existed). `resume` reports a Run error and resolves to `null` when it is `null`.
+   * session existed). `ask` reports a Run error and resolves to `null` when it is `null`.
    */
   readonly sessionID: string | null
   /**
-   * Send the next turn into this same session and resolve to a new handle — the conversation continues where the
-   * last turn stopped, with its transcript, its tool results and its prompt cache. `session`, `keepSession` and
-   * `receipts` are not accepted here: a continuation is always a continuation.
+   * Ask the same conversation something else: sends the next turn into this session and resolves to a new handle. The
+   * conversation continues where the last turn stopped, with its transcript, its tool results and its prompt cache.
+   * `session`, `keepSession` and `receipts` are not accepted here — a continuation is always a continuation.
    *
-   * One turn at a time: never `resume` (or `agent({ session })`) twice concurrently on the same session.
+   * Named `ask` rather than `resume` on purpose: this codebase already has `resumeRun` (restart a whole Run from its
+   * journal), and two different "resumes" is one too many. A turn that finished successfully is not resumed — it is
+   * asked again in the same chat.
+   *
+   * One turn at a time: never `ask` (or `agent({ session })`) twice concurrently on the same session.
    */
-  resume<S extends z.ZodType | JsonSchemaInput | undefined = undefined>(
+  ask<S extends z.ZodType | JsonSchemaInput | undefined = undefined>(
     prompt: string,
     opts?: ContinuationOpts<S>,
   ): Promise<UnitHandle<UnitValue<S>>>
   /**
-   * End the conversation: a later `agent({ session })` or `resume` on it fails legibly, and the session is
+   * End the conversation: a later `agent({ session })` or `ask` on it fails legibly, and the session is
    * interrupted so nothing keeps running in it. Never throws.
    *
    * Not required for correctness: an idle kept session runs nothing, a Run's active turn is stopped with its Unit,
@@ -299,7 +303,7 @@ export type ContinuationOpts<S extends z.ZodType | JsonSchemaInput | undefined =
  *
  * Passing `{ receipts: true }` resolves to a {@link UnitReceipt} instead — the same value, plus the Unit's id and
  * what its session actually did. With `{ keepSession: true }` it resolves to a {@link UnitHandle}: a receipt plus
- * `sessionID`, `resume` and `close`, for a conversation. Both flags sit in these overloads, not in
+ * `sessionID`, `ask` and `close`, for a conversation. Both flags sit in these overloads, not in
  * {@link AgentOpts}, so the resolved type follows what the call site wrote.
  *
  * `receipts` is deliberately NOT part of {@link AgentOpts}: it lives in these overloads so the resolved type follows

@@ -1,5 +1,5 @@
 /**
- * `agent({ keepSession })` / `agent({ session })` / `handle.resume()` — a conversation that spans turns.
+ * `agent({ keepSession })` / `agent({ session })` / `handle.ask()` — a conversation that spans turns.
  *
  * The rules these tests pin: a continuation is a NEW Unit with its OWN id, ordinal and prompt, but it runs in the
  * session the earlier turn created, so the transcript accumulates. Everything the session decided at create time is
@@ -19,7 +19,7 @@ describe("agent({ keepSession }) — a conversation", () => {
     expect(first.value).toBe("about review")
     expect(first.sessionID).toBe("ses_fake_1")
 
-    const second = await first.resume("re-check")
+    const second = await first.ask("re-check")
     expect(second.value).toBe("about re-check")
     // Same session, two prompts: the conversation continued instead of starting over.
     expect(second.sessionID).toBe("ses_fake_1")
@@ -67,7 +67,7 @@ describe("agent({ keepSession }) — a conversation", () => {
     const first = await ctx.agent("review", { keepSession: true })
     expect(first.value).toBe("loose notes")
     const Findings = z.object({ issues: z.array(z.string()) })
-    const second = await first.resume("list them", { schema: Findings })
+    const second = await first.ask("list them", { schema: Findings })
     expect(second.value).toEqual({ issues: ["a", "b"] })
   })
 
@@ -122,8 +122,8 @@ describe("agent({ keepSession }) — a conversation", () => {
       { events: { onUnit: (unit) => units.push(unit) } },
     )
     const first = await ctx.agent("t1", { label: "t1", keepSession: true })
-    const second = await first.resume("t2", { label: "t2" })
-    await second.resume("t3", { label: "t3" })
+    const second = await first.ask("t2", { label: "t2" })
+    await second.ask("t3", { label: "t3" })
 
     const settled = units.filter((unit) => unit.status === "succeeded")
     expect(settled.map((unit) => unit.label)).toEqual(["t1", "t2", "t3"])
@@ -155,7 +155,7 @@ describe("agent({ keepSession }) — a conversation", () => {
     const handle = await ctx.agent("one", { keepSession: true })
     expect(handle.value).toBeNull()
     expect(handle.sessionID).toBeNull()
-    const again = await handle.resume("two")
+    const again = await handle.ask("two")
     expect(again.value).toBeNull()
     expect(state.errors.at(-1)!.error).toContain("never had a session")
   })
@@ -175,7 +175,7 @@ describe("agent({ keepSession }) — a conversation", () => {
   test("the transcript accumulates across turns: the second turn sees the first one's messages", async () => {
     const { ctx, host } = makeCtx({ reply: (call) => ({ text: `reply to ${call.text}` }) })
     const first = await ctx.agent("one", { keepSession: true })
-    await first.resume("two")
+    await first.ask("two")
     const transcript = (await host.session.context({ sessionID: first.sessionID! })) as HostMessage[]
     expect(transcript.map((message) => message.type)).toEqual(["user", "assistant", "user", "assistant"])
     expect(transcript[0]!.content?.[0]?.text).toBe("one")
@@ -187,7 +187,7 @@ describe("agent({ keepSession }) — a conversation", () => {
     const { ctx, state } = makeCtx({ replies: [{ text: "first answer" }, { none: true }] })
     const first = await ctx.agent("review1", { keepSession: true })
     expect(first.value).toBe("first answer")
-    const second = await first.resume("review2")
+    const second = await first.ask("review2")
     // Turn 2 produced no text at all: that is a failed turn, NOT turn 1's answer reported as a success.
     expect(second.value).toBeNull()
     expect(state.errors.at(-1)!.unit).toBeTruthy()
@@ -196,7 +196,7 @@ describe("agent({ keepSession }) — a conversation", () => {
   test("a continuation's provider error is not swallowed by the previous turn's answer", async () => {
     const { ctx, state } = makeCtx({ replies: [{ text: "first answer" }, { error: "provider exploded" }] })
     const first = await ctx.agent("review1", { keepSession: true })
-    const second = await first.resume("review2")
+    const second = await first.ask("review2")
     expect(second.value).toBeNull()
     expect(state.errors).toHaveLength(1)
     expect(state.errors[0]!.error).toContain("provider exploded")
@@ -210,7 +210,7 @@ describe("agent({ keepSession }) — a conversation", () => {
     })
     const first = await ctx.agent("review1", { schema: Findings, keepSession: true })
     expect(first.value).toEqual({ issues: ["stale"] })
-    const second = await first.resume("review2", { schema: Findings, retries: 0 })
+    const second = await first.ask("review2", { schema: Findings, retries: 0 })
     expect(second.value).toBeNull()
   })
 
@@ -223,7 +223,7 @@ describe("agent({ keepSession }) — a conversation", () => {
     })
     const first = await ctx.agent("t1", { keepSession: true })
     expect((await first.toolCalls).map((call) => JSON.parse(call.input))).toEqual([{ command: "first" }])
-    const second = await first.resume("t2")
+    const second = await first.ask("t2")
     expect((await second.toolCalls).map((call) => JSON.parse(call.input))).toEqual([{ command: "second" }])
   })
 
@@ -237,7 +237,7 @@ describe("agent({ keepSession }) — a conversation", () => {
       ],
     })
     const first = await ctx.agent("t1", { keepSession: true })
-    await first.resume("t2")
+    await first.ask("t2")
     // Read only now: both turns are in the session.
     expect((await first.toolCalls).map((call) => call.name)).toEqual(["read"])
   })
@@ -281,7 +281,7 @@ describe("agent({ keepSession }) — a conversation", () => {
     const first = await ctx.agent("t1", { keepSession: true })
     expect(first.value).toBe("TURN1 ANSWER")
     expect(first.sessionID).not.toBeNull()
-    const second = await first.resume("t2")
+    const second = await first.ask("t2")
     // The turn fails, legibly, and — the point — never carries the previous turn's answer as a success.
     expect(second.value).toBeNull()
     const error = state.errors.at(-1)!.error
@@ -299,7 +299,7 @@ describe("agent({ keepSession }) — a conversation", () => {
     })
     const first = await ctx.agent("t1", { keepSession: true })
     expect(first.value).toBe("one")
-    const second = await first.resume("t2")
+    const second = await first.ask("t2")
     expect(second.value).toBe("two")
   })
 
@@ -317,7 +317,7 @@ describe("agent({ keepSession }) — a conversation", () => {
       contextError: "transcript vanished",
     })
     const first = await ctx.agent("t1", { keepSession: true })
-    const second = await first.resume("t2")
+    const second = await first.ask("t2")
     expect(second.value).toBeNull()
     expect(state.errors.at(-1)!.error).toContain("could not read the Unit transcript")
     // Failed before the read that fixes its slice: `[]`, never turn 1's `read`.
@@ -334,7 +334,7 @@ describe("agent({ keepSession }) — a conversation", () => {
     const first = await ctx.agent("t1", { keepSession: true })
     expect(first.value).toBe("one")
     // The turn times out before it can read its own answer: no slice is ever recorded.
-    const second = await first.resume("t2", { timeoutMs: 20 })
+    const second = await first.ask("t2", { timeoutMs: 20 })
     expect(second.value).toBeNull()
     expect(state.errors.at(-1)!.error).toContain("timeout")
     // Every read would succeed here — the answer is still `[]`, because the turn's own extent is unknown.
@@ -375,7 +375,7 @@ describe("agent({ keepSession }) — a conversation", () => {
     )
     const first = await ctx.agent("review1", { label: "review", keepSession: true })
     await ctx.agent("fix", { label: "fix" })
-    await first.resume("review2", { label: "review2" })
+    await first.ask("review2", { label: "review2" })
 
     // The latest state of each Unit, in ordinal order — what a surface renders as rows.
     const latest = new Map<string, Unit>()
@@ -397,7 +397,7 @@ describe("agent({ keepSession }) — a conversation", () => {
       { events: { onUnit: (unit) => statuses.push({ prompt: unit.prompt, status: unit.status }) } },
     )
     const first = await ctx.agent("review1", { label: "review", keepSession: true })
-    const running = first.resume("review2", { label: "review2" })
+    const running = first.ask("review2", { label: "review2" })
     // While the second turn is in flight, the first turn saw its last transition as `succeeded`.
     await Bun.sleep(2)
     const lastOf = (prompt: string) => statuses.findLast((entry) => entry.prompt === prompt)!
@@ -442,7 +442,7 @@ describe("a conversation across a resume — replay", () => {
     )
     const first = await ctx.agent("review", { keepSession: true })
     expect(first.value).toBe("first pass")
-    const second = await first.resume("re-check")
+    const second = await first.ask("re-check")
     expect(second.value).toBe("second pass")
     // The whole point: a resume of a conversation costs nothing — no create, no prompt.
     expect(host.creates).toHaveLength(0)
@@ -461,7 +461,7 @@ describe("a conversation across a resume — replay", () => {
     expect(first.value).toBe("first pass")
     // A replayed Unit's handle reports the session the ORIGINAL Run recorded, so the next turn goes there.
     expect(first.sessionID).toBe("ses_fake_old")
-    const second = await first.resume("re-check")
+    const second = await first.ask("re-check")
     expect(second.value).toBe("live answer")
     expect(host.prompts).toEqual([{ sessionID: "ses_fake_old", text: "re-check", turn: 0 }])
   })
@@ -479,7 +479,7 @@ describe("a conversation across a resume — replay", () => {
     const first = await ctx.agent("review", { keepSession: true })
     expect(first.value).toBe("first pass")
     // The script asked for a different prompt at ordinal 2: replay diverges and the rest runs live.
-    const second = await first.resume("re-check")
+    const second = await first.ask("re-check")
     expect(second.value).toBe("live")
     expect(host.prompts).toHaveLength(1)
     expect(state.errors).toHaveLength(0)

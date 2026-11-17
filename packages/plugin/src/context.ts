@@ -478,7 +478,7 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
         // session in the same OpenCode, the caller's own chat — must never become a Unit's scratchpad.
         return reject(
           `agent({ session: ${JSON.stringify(continuing)} }): not a session this Run can continue. ` +
-            `Take the id from \`agent(prompt, { keepSession: true })\` (its \`sessionID\`) or from a handle's \`resume\`.`,
+            `Take the id from \`agent(prompt, { keepSession: true })\` (its \`sessionID\`) or from a handle's \`ask\`.`,
         )
       }
       if (session.closed)
@@ -859,23 +859,23 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
 
   /**
    * The handle `agent(…, { keepSession: true })` resolves to: a receipt plus the session id and the two things a
-   * conversation needs — `resume` (next turn, same session) and `close` (end it).
+   * conversation needs — `ask` (next turn, same session) and `close` (end it).
    *
-   * Serializes to `{ value, unitId, sessionID }`: `toolCalls`, `resume` and `close` are non-enumerable, so a handle
+   * Serializes to `{ value, unitId, sessionID }`: `toolCalls`, `ask` and `close` are non-enumerable, so a handle
    * returned from `run()` journals what it is, not a function table.
    */
   const handleOf = (outcome: UnitOutcome): UnitHandle<unknown> => {
     const { sessionID } = outcome
     const handle = { value: outcome.value, unitId: outcome.unitId, sessionID } as UnitHandle<unknown>
     Object.defineProperties(handle, {
-      resume: {
+      ask: {
         enumerable: false,
         configurable: true,
         value: (prompt: string, opts: ContinuationOpts<z.ZodType> = {}) => {
           if (!sessionID) {
             return Promise.resolve(
               handleFailed(
-                `resume: Unit ${outcome.label ?? outcome.unitId} never had a session (it failed before one existed), so there is nothing to continue`,
+                `ask: Unit ${outcome.label ?? outcome.unitId} never had a session (it failed before one existed), so there is nothing to ask`,
                 outcome,
               ),
             )
@@ -893,15 +893,15 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
   }
 
   /**
-   * A `resume()` with nothing to resume. It is recorded in `errors` like any other dropped Unit — never a rejected
+   * An `ask()` with nothing to ask into. It is recorded in `errors` like any other dropped Unit — never a rejected
    * promise, because `agent()` does not throw and its conversational counterpart should not either — and it hands
    * back a null-valued handle that KEEPS the original `unitId` (it did not run, so it is not a new Unit) with no
-   * session, so a mistaken second `resume()` fails the same way instead of starting something.
+   * session, so a mistaken second `ask()` fails the same way instead of starting something.
    */
   const handleFailed = (error: string, from: UnitOutcome): UnitHandle<unknown> => {
     state.errors.push({
       unit: from.label ?? from.unitId,
-      prompt: "(resume: no session)",
+      prompt: "(ask: no session)",
       subagent: "(unknown)",
       error,
     })
