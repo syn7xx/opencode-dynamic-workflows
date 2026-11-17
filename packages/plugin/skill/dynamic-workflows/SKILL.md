@@ -54,21 +54,21 @@ export default defineWorkflow({
 
 ## The context
 
-| Member                                   | Behaviour                                                                                                                                                                                                                                                       |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agent(prompt, opts?)`                   | One Unit. Resolves to the final text, or — with `schema` — to the validated value. A failed Unit resolves to **`null`** and is added to `errors`; it never throws. With `{ receipts: true }` it resolves to `{ value, unitId, toolCalls }` instead (see below). |
-| `pipeline(items, ...stages)`             | Each item runs through all stages on its own, with **no barrier** between items. Stages get `(previous, item, index)`. A stage that throws turns that item into `null` and skips its later stages.                                                              |
-| `parallel(thunks)`                       | Runs `() => Promise` thunks concurrently and waits for all — a **barrier**. A thunk that throws becomes `null`; the call never rejects.                                                                                                                         |
-| `collect(xs)`                            | Drops the `null`s, with the narrowed type.                                                                                                                                                                                                                      |
-| `errors`                                 | Every dropped Unit so far: `{ unit, prompt, subagent, error }`.                                                                                                                                                                                                 |
-| `phase(title)`, `log(message)`           | Progress. `log` lines are what the person reads while it runs.                                                                                                                                                                                                  |
-| `ask(questions, { fallback, graceMs? })` | Asks the person (see below).                                                                                                                                                                                                                                    |
-| `budget`                                 | `{ total, spent(), remaining() }` in output tokens for this Run.                                                                                                                                                                                                |
-| `signal`                                 | The Run's `AbortSignal`.                                                                                                                                                                                                                                        |
-| `model`                                  | The launching session's model (`"provider/model#variant"`), or `null` for a headless/synthetic caller. What `agent(…, { model: "inherit" })` and a bare `effort` inherit.                                                                                       |
-| `$`, `file`, `fetch`                     | Shell, files and HTTP, confined to the project (see below).                                                                                                                                                                                                     |
-| `workflow(name, args?)`                  | Run a **saved** Workflow as one step of this Run and get its result (see below).                                                                                                                                                                                |
-| `worktrees()`                            | The worktrees kept by `isolation: "worktree"` Units that changed files.                                                                                                                                                                                         |
+| Member                                   | Behaviour                                                                                                                                                                                                                                                                                                                                                                          |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent(prompt, opts?)`                   | One Unit. Resolves to the final text, or — with `schema` — to the validated value. A failed Unit resolves to **`null`** and is added to `errors`; it never throws. With `{ receipts: true }` it resolves to `{ value, unitId, toolCalls }` instead (see below). With `{ keepSession: true }` it resolves to a handle with `sessionID` and `resume()` — a conversation (see below). |
+| `pipeline(items, ...stages)`             | Each item runs through all stages on its own, with **no barrier** between items. Stages get `(previous, item, index)`. A stage that throws turns that item into `null` and skips its later stages.                                                                                                                                                                                 |
+| `parallel(thunks)`                       | Runs `() => Promise` thunks concurrently and waits for all — a **barrier**. A thunk that throws becomes `null`; the call never rejects.                                                                                                                                                                                                                                            |
+| `collect(xs)`                            | Drops the `null`s, with the narrowed type.                                                                                                                                                                                                                                                                                                                                         |
+| `errors`                                 | Every dropped Unit so far: `{ unit, prompt, subagent, error }`.                                                                                                                                                                                                                                                                                                                    |
+| `phase(title)`, `log(message)`           | Progress. `log` lines are what the person reads while it runs.                                                                                                                                                                                                                                                                                                                     |
+| `ask(questions, { fallback, graceMs? })` | Asks the person (see below).                                                                                                                                                                                                                                                                                                                                                       |
+| `budget`                                 | `{ total, spent(), remaining() }` in output tokens for this Run.                                                                                                                                                                                                                                                                                                                   |
+| `signal`                                 | The Run's `AbortSignal`.                                                                                                                                                                                                                                                                                                                                                           |
+| `model`                                  | The launching session's model (`"provider/model#variant"`), or `null` for a headless/synthetic caller. What `agent(…, { model: "inherit" })` and a bare `effort` inherit.                                                                                                                                                                                                          |
+| `$`, `file`, `fetch`                     | Shell, files and HTTP, confined to the project (see below).                                                                                                                                                                                                                                                                                                                        |
+| `workflow(name, args?)`                  | Run a **saved** Workflow as one step of this Run and get its result (see below).                                                                                                                                                                                                                                                                                                   |
+| `worktrees()`                            | The worktrees kept by `isolation: "worktree"` Units that changed files.                                                                                                                                                                                                                                                                                                            |
 
 ### `agent()` options
 
@@ -85,8 +85,66 @@ export default defineWorkflow({
 | `permissions`                  | Rules for this Unit's session, e.g. `[{ action: "edit", resource: "*", effect: "deny" }]`.                                                                                                                                                                                 |
 | `isolation`                    | `"worktree"`: run the Unit in a fresh git worktree — for Units that **edit files in parallel** (see below).                                                                                                                                                                |
 | `location`                     | Run the Unit in a directory you prepared yourself.                                                                                                                                                                                                                         |
+| `session`                      | Send this turn into an existing session (`handle.sessionID`) — a follow-up, not a new Unit session. Refuses `subagent`, `model`, `effort`, `location`, `isolation`, `permissions`.                                                                                         |
 
-`{ receipts: true }` is a separate flag, not an `AgentOpts` member (see "Asserting what a Unit did").
+`{ receipts: true }` and `{ keepSession: true }` are separate flags, not `AgentOpts` members (see "Asserting what a
+Unit did" and "Continuing a Unit").
+
+### Continuing a Unit — a review → fix loop
+
+Every `agent()` call starts a fresh session, so a second reviewer knows nothing the first one learned. When a stage
+should come **back to the same conversation** — re-checking its own findings, applying fixes it proposed, iterating
+until clean — keep the session:
+
+```ts
+let review = await agent("Review the diff. List every issue you find.", {
+  label: "reviewer",
+  schema: Findings,
+  keepSession: true,
+})
+
+for (let round = 0; round < 3 && (review.value?.issues.length ?? 0) > 0; round++) {
+  await agent(`Fix exactly these:\n${JSON.stringify(review.value.issues)}`, { label: `fix-${round}` })
+  review = await review.resume("Re-check your previous findings against the fixes you just made.", {
+    schema: Findings,
+  })
+}
+await review.close()
+```
+
+The second turn runs in the **same session**, so it sees its own earlier transcript and tool results (the files it
+already read) and reuses the prompt cache. What that buys: it does not re-read the repo, and it converges instead of
+re-deciding from scratch.
+
+Rules worth knowing:
+
+- **It is still a new Unit.** Each turn gets its own `unitId`, ordinal and prompt, is journaled and replayed like any
+  other Unit, and appears in the UI as its own row — the surfaces key a Unit by `unitId`, never by session, so the
+  earlier turn stays `succeeded` while the next one runs. Two Units sharing a `sessionID` are two turns of one
+  conversation. So limits, budget, errors and resume all work unchanged.
+- **The session decides once.** `subagent`/`agentType`, `model`, `effort`, `location`, `isolation` and `permissions`
+  are fixed at create time; the host's `prompt` takes a session id and text. Passing one on a turn is an **error**
+  (a failed Unit with a legible message, not a silent ignore) — start a new Unit instead.
+- **Per-turn options do work:** `schema`, `retries`, `timeoutMs`, `label`, `phase`. A text turn followed by a typed
+  turn on the same session is fine, and normal for this loop.
+- **One turn at a time.** Never `Promise.all` over `resume()` (or two `agent(…, { session })` calls on one id): the
+  second is refused. Conversations are sequential by nature.
+- **Usage is per turn.** A continuation's Unit reports what that turn spent, not the session's lifetime total, so
+  budgets stay meaningful.
+- **Report only what this turn did.** `toolCalls` on a continuation's receipt are the calls of that turn, not the whole
+  conversation's — so an assertion reads the evidence of the step it is checking.
+- **A conversation still needs a budget.** A loop that never converges is a real failure mode; bound the rounds
+  (`for (let i = 0; i < 3 …)`) rather than trusting the loop to end.
+- **Usage and evidence are per turn.** A continuation's Unit reports what that turn spent and the tool calls that turn
+  made, not the session's lifetime totals, so budgets and receipts stay meaningful across a long conversation.
+- `close()` is optional: an idle kept session runs nothing, and the Run's cleanup owns its retention. `close()` marks
+  the conversation ended (a later turn on it fails) and interrupts the session.
+- **The transcript shows this turn.** A continued Unit's transcript view is sliced at its own prompt (the engine opens
+  each turn with it), so a review loop reads as three separate turns instead of one long log; "show whole conversation"
+  reveals the rest. Related: a turn whose own extent cannot be measured — the session transcript is unreadable when the
+  turn starts — **fails** rather than reporting the previous turn's text as its answer.
+
+`agent(prompt, { session })` is the same thing without a handle — useful when you thread the id through your own state.
 
 ### Typed Units
 

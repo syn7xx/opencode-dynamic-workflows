@@ -427,6 +427,15 @@ export type ListRunsOutput = z.infer<typeof ListRunsOutput>
 
 export const RunRef = z.object({ runId: z.string() })
 export const UnitRef = z.object({ runId: z.string(), unitId: z.string() })
+/**
+ * A Unit transcript request. `whole` returns the entire conversation a continued Unit belongs to; without it the
+ * response holds only that Unit's own turn (see {@link GetTranscriptOutput.earlier}).
+ */
+export const TranscriptRef = z.object({
+  runId: z.string(),
+  unitId: z.string(),
+  whole: z.boolean().optional(),
+})
 export const InteractionRef = z.object({ runId: z.string(), interactionId: z.string() })
 
 export const GetRunOutput = z.object({ run: Run, live: z.boolean() })
@@ -528,6 +537,18 @@ export const GetTranscriptOutput = z.object({
   messages: z.array(TranscriptMessage),
   /** True when some parts were clipped for size. */
   clipped: z.boolean(),
+  /**
+   * The messages before this Unit's own turn, when the Unit continued an earlier Unit's session
+   * (`agent(prompt, { session })`). `messages` then holds ONLY this turn, and this is what came before it — so a
+   * viewer shows the turn by default and can reveal the whole conversation on request. Absent for a normal Unit (its
+   * turn is the whole session) and when the boundary is unknown (a replayed or older Unit).
+   */
+  earlier: z.number().optional(),
+  /**
+   * How many Units share this session — 1 for an ordinary Unit, more for a conversation. Lets a viewer say "turn 2 of
+   * 3" instead of pretending the transcript is one Unit's.
+   */
+  turns: z.number().optional(),
 })
 export type GetTranscriptOutput = z.infer<typeof GetTranscriptOutput>
 

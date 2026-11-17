@@ -260,9 +260,23 @@ const PATHS: Json = {
   "/v1/runs/{runId}/units/{unitId}/transcript": {
     get: {
       operationId: "getTranscript",
-      summary: "The Unit's session: messages, reasoning and tool calls",
+      summary: "The Unit's turn: messages, reasoning and tool calls",
+      description:
+        "A Unit that continued an earlier Unit's session (`agent(prompt, { session })`) returns only its own turn, " +
+        "with `earlier` counting the messages that came before it; `turns` says how many Units share the session. " +
+        "Pass `whole=true` to get the entire conversation instead.",
       security: READ,
-      parameters: [runId, unitId],
+      parameters: [
+        runId,
+        unitId,
+        {
+          name: "whole",
+          in: "query",
+          required: false,
+          description: "Return the whole conversation a continued Unit belongs to, not just its own turn.",
+          schema: { type: "boolean" },
+        },
+      ],
       responses: { ...ok("GetTranscriptOutput"), ...errors(401, 404) },
     },
   },

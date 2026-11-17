@@ -102,6 +102,12 @@
     },
     "clipped": {
       "type": "boolean"
+    },
+    "earlier": {
+      "type": "number"
+    },
+    "turns": {
+      "type": "number"
     }
   },
   "required": [

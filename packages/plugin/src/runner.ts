@@ -77,6 +77,12 @@ export interface UnitSpec {
   prompt: string
   subagent: string
   label: string | null
+  /**
+   * Run this turn in an EXISTING session instead of creating one (`agent(prompt, { session })`). The session keeps
+   * what it decided at create time — agent, model, directory, ruleset — so `subagent`/`model`/`unitLocation` are
+   * not sent, and the Unit's usage is what THIS turn spent, not the session's cumulative total.
+   */
+  continueSessionID?: string
   model?: HostModelRef
   schema?: z.ZodType
   retries?: number
@@ -88,7 +94,12 @@ export interface UnitSpec {
   ask: UnitBinding["ask"]
   permissionPolicy: UnitBinding["permissionPolicy"]
   /** Called once the session exists, with a handle that stops this Unit and the model the session resolved. */
-  onSession?: (sessionID: string, stop: () => void, model: HostModelRef | undefined) => void
+  onSession?: (
+    sessionID: string,
+    stop: () => void,
+    model: HostModelRef | undefined,
+    location: string | undefined,
+  ) => void
   /** Called when the Unit moves into repair turns. */
   onRepairing?: () => void
   /** For a Unit in another directory: null when it may run there, else why not. Checked once its session exists. */
@@ -102,6 +113,19 @@ export interface UnitSpec {
   mayContinue?: (unitOutputTokens: number) => boolean
 }
 
+/**
+ * The slice of the session's transcript this Unit's turn occupies, `[start, end)`.
+ *
+ * Recorded when the turn ends, not derived when a receipt is read: a receipt's `toolCalls` is a lazy getter that may
+ * be read after the NEXT turn has already added messages, and a turn can be several prompts (repair turns), so "the
+ * last user message" is not a turn boundary. `null` when the transcript could not be measured — a receipt then falls
+ * back to the whole session, which is honest for a Unit that owns it.
+ */
+export interface TurnSlice {
+  start: number
+  end: number
+}
+
 export type UnitRunResult =
   | {
       ok: true
@@ -111,6 +135,8 @@ export type UnitRunResult =
       model: HostModelRef | undefined
       path: ResultPath
       attempts: UnitAttempt[]
+      /** Messages this turn added to its session, so its receipt can read exactly its own evidence. */
+      slice: TurnSlice | null
     }
   | {
       ok: false
@@ -120,6 +146,7 @@ export type UnitRunResult =
       usage: Usage
       model: HostModelRef | undefined
       attempts: UnitAttempt[]
+      slice: TurnSlice | null
     }
 
 export function stringifyError(error: unknown): string {
@@ -207,10 +234,35 @@ interface UnitTrace {
   sessionID: string | null
   attempts: UnitAttempt[]
   release: (() => void) | null
+  /**
+   * A continuation's session totals BEFORE this turn, so the backstop can report what the turn spent instead of the
+   * session's lifetime total. `null` for a session this Unit created (its totals are the Unit's from zero).
+   */
+  baseline: Usage | null
+  /**
+   * Where this turn sits in the session's transcript, measured as messages arrive. Kept on the trace because a
+   * receipt may be read long after the turn ended — and after later turns added messages.
+   */
+  slice: TurnSlice | null
+}
+
+/** Turn a session's lifetime totals into what THIS turn spent, given a baseline taken before it started. */
+function subtractUsage(current: Usage, base: Usage): Usage {
+  const delta = (now: number, before: number) => Math.max(0, now - before)
+  return {
+    tokens: {
+      input: delta(current.tokens.input, base.tokens.input),
+      output: delta(current.tokens.output, base.tokens.output),
+      reasoning: delta(current.tokens.reasoning, base.tokens.reasoning),
+      cacheRead: delta(current.tokens.cacheRead, base.tokens.cacheRead),
+      cacheWrite: delta(current.tokens.cacheWrite, base.tokens.cacheWrite),
+    },
+    cost: Math.max(0, current.cost - base.cost),
+  }
 }
 
 export async function runUnit(host: EngineHost, index: UnitIndex, spec: UnitSpec): Promise<UnitRunResult> {
-  const trace: UnitTrace = { sessionID: null, attempts: [], release: null }
+  const trace: UnitTrace = { sessionID: null, attempts: [], release: null, baseline: null, slice: null }
   try {
     return await runUnitUnsafe(host, index, spec, trace)
   } catch (error) {
@@ -225,7 +277,15 @@ export async function runUnit(host: EngineHost, index: UnitIndex, spec: UnitSpec
         .catch(() => {})
       usage = await Promise.resolve()
         .then(() => host.session.get({ sessionID }))
-        .then(usageFromSession, () => emptyUsage())
+        .then(
+          // A continuation's session carries earlier turns' totals: report only what THIS turn spent, exactly like
+          // the normal path does. Without this a crash would bill the whole conversation to one Unit.
+          (info) => {
+            const total = usageFromSession(info)
+            return trace.baseline ? subtractUsage(total, trace.baseline) : total
+          },
+          () => emptyUsage(),
+        )
     }
     return {
       ok: false,
@@ -235,6 +295,7 @@ export async function runUnit(host: EngineHost, index: UnitIndex, spec: UnitSpec
       usage,
       model: spec.model,
       attempts: trace.attempts,
+      slice: trace.slice,
     }
   }
 }
@@ -256,6 +317,7 @@ async function runUnitUnsafe(
     usage,
     model,
     attempts,
+    slice: trace.slice,
   })
 
   let jsonSchema: Record<string, unknown> | undefined
@@ -288,41 +350,58 @@ async function runUnitUnsafe(
   })
 
   let info: HostSessionInfo
-  try {
-    const creating = Promise.resolve(
-      host.session.create({
-        title: unitTitle(spec.workflow, spec.label, spec.subagent),
-        agent: spec.subagent,
-        ...(spec.model ? { model: spec.model } : {}),
-        metadata: {
-          workflow: {
-            protocol: 1,
-            runId: spec.runId,
-            unitId: spec.unitId,
-            ordinal: spec.ordinal,
-            attempt: 1,
-            parentSessionID: spec.parentSessionID,
-            workflow: spec.workflow,
-            location: spec.location,
-          },
-        },
-        permissions: [...(spec.permissions ?? []), ...ENGINE_UNIT_RULES],
-        ...(spec.unitLocation ? { location: { directory: spec.unitLocation } } : {}),
-      }),
-    )
-    const created = await Promise.race([creating.then((value) => ({ value })), aborted.then((why) => ({ why }))])
-    if ("why" in created) {
-      // Stopped while OpenCode was still creating it: stop that session whenever it appears.
-      void creating
-        .then((late) => (late.id ? host.session.interrupt({ sessionID: late.id }) : undefined))
-        .catch(() => {})
-      return fail(interruptedBeforeSession(created.why), created.why === "stopped" || created.why === "aborted")
+  if (spec.continueSessionID) {
+    // A continuation: the session already exists, and what it decided at create time (agent, model, directory,
+    // ruleset) is not the host's to change — `session.prompt` takes an id and text. Its model is whatever the
+    // session resolved, reported by `session.get`.
+    if (guard.aborted) return fail(interruptedBeforeSession(reason()), true)
+    sessionID = spec.continueSessionID
+    trace.sessionID = sessionID
+    try {
+      info = await host.session.get({ sessionID })
+    } catch (error) {
+      return fail(
+        `could not read the session this turn continues (${spec.continueSessionID}): ${stringifyError(error)}`,
+        guard.aborted,
+      )
     }
-    info = created.value
-  } catch (error) {
-    return fail(`could not create the Unit session: ${stringifyError(error)}`, guard.aborted)
+  } else {
+    try {
+      const creating = Promise.resolve(
+        host.session.create({
+          title: unitTitle(spec.workflow, spec.label, spec.subagent),
+          agent: spec.subagent,
+          ...(spec.model ? { model: spec.model } : {}),
+          metadata: {
+            workflow: {
+              protocol: 1,
+              runId: spec.runId,
+              unitId: spec.unitId,
+              ordinal: spec.ordinal,
+              attempt: 1,
+              parentSessionID: spec.parentSessionID,
+              workflow: spec.workflow,
+              location: spec.location,
+            },
+          },
+          permissions: [...(spec.permissions ?? []), ...ENGINE_UNIT_RULES],
+          ...(spec.unitLocation ? { location: { directory: spec.unitLocation } } : {}),
+        }),
+      )
+      const created = await Promise.race([creating.then((value) => ({ value })), aborted.then((why) => ({ why }))])
+      if ("why" in created) {
+        // Stopped while OpenCode was still creating it: stop that session whenever it appears.
+        void creating
+          .then((late) => (late.id ? host.session.interrupt({ sessionID: late.id }) : undefined))
+          .catch(() => {})
+        return fail(interruptedBeforeSession(created.why), created.why === "stopped" || created.why === "aborted")
+      }
+      info = created.value
+    } catch (error) {
+      return fail(`could not create the Unit session: ${stringifyError(error)}`, guard.aborted)
+    }
   }
-  sessionID = info.id
+  sessionID = info.id ?? sessionID
   if (!sessionID) return fail("session.create returned no session id")
   trace.sessionID = sessionID
 
@@ -352,7 +431,7 @@ async function runUnitUnsafe(
     unbind()
   }
   model = info.model ?? model
-  spec.onSession?.(sessionID, () => stop.abort(), model)
+  spec.onSession?.(sessionID, () => stop.abort(), model, info.location?.directory)
 
   /** Stop the session and give it a bounded moment to go quiet, so its usage is final and no work outlives the Unit. */
   const halt = async (id: string) => {
@@ -402,6 +481,85 @@ async function runUnitUnsafe(
   /** Output tokens and cost of host calls the session does not count (extraction). */
   let extra = emptyUsage()
 
+  /**
+   * A continuation's session already spent tokens in earlier turns, and `session.get` reports the session's
+   * lifetime totals. What this Unit reports — its usage, its budget share, what the Run adds up — is only THIS
+   * turn, so a baseline is taken before the first prompt and subtracted. `null` for a session this Unit created
+   * (its totals are the Unit's from zero).
+   */
+  const baseline: Usage | null = spec.continueSessionID ? usageFromSession(info) : null
+  trace.baseline = baseline
+
+  /**
+   * The session's transcript length right now, or `null` when it cannot be read. Bounded like every other host call
+   * (a hung `session.context` must not hold a Unit or its concurrency slot forever), so a stall is `null` rather than
+   * a hang — and the caller decides what an unmeasurable transcript means.
+   */
+  const transcriptLength = async (id: string): Promise<number | null> => {
+    try {
+      return (await host.session.context({ sessionID: id })).length
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * A continuation's turn start, with ONE deadline shared by the attempt and its retry: a retry does not buy a second
+   * window, so a hung host fails the turn in about {@link DRAIN_MS} rather than twice that. The deadline is a real
+   * cancellation point — a late read is ignored, not awaited.
+   */
+  const measureTurnStart = async (id: string): Promise<number | null> => {
+    const deadline = Date.now() + DRAIN_MS
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const remaining = deadline - Date.now()
+      if (remaining <= 0) return null
+      const read = transcriptLength(id)
+      const won = await Promise.race([
+        read.then((length) => ({ length })),
+        Bun.sleep(remaining).then(() => ({ timeout: true as const })),
+      ])
+      if ("length" in won && won.length !== null) return won.length
+      // A fast failure (a rejected read) is worth one immediate retry — a transient host hiccup. A stall already spent
+      // the shared budget, so there is nothing left to retry with.
+      if ("timeout" in won) return null
+      if (attempt === 1) return null
+    }
+    return null
+  }
+
+  /**
+   * Where this turn starts in the session's transcript. A session this Unit created is empty, so this is 0 and costs
+   * nothing — the "a Workflow that never asks pays nothing" promise stays true. A continuation's session already holds
+   * earlier turns, so its length is read ONCE here, before the first prompt.
+   *
+   * Measured here (not when a receipt is read) because a receipt is a lazy getter: by the time the author reads it,
+   * the next turn may already have added messages.
+   */
+  let turnStart: number | null = spec.continueSessionID ? null : 0
+  /** The transcript length after the last thing this turn wrote, taken from the read the answer needs anyway. */
+  let turnEnd: number | null = null
+  if (turnStart === null) {
+    // A continuation MUST know where its turn starts: without it, "read the transcript" means the whole conversation,
+    // and a turn that produced no text would be answered with the PREVIOUS turn's text as a success. One retry for a
+    // transient host hiccup, then the turn fails rather than guessing.
+    turnStart = await measureTurnStart(sessionID)
+    // Nothing has run yet, so there is no usage to report — the turn failed before its first prompt.
+    if (turnStart === null)
+      return fail(
+        "could not read the transcript of the session this turn continues, so the turn could not be scoped to its own messages",
+      )
+  }
+  /**
+   * Where the NEXT prompt will land: the length of the transcript after the last read. Nothing but this Unit writes to
+   * the session between prompts, so the previous read's length is exactly where the next prompt starts — no extra read.
+   */
+  let promptStart: number | null = turnStart
+
+  /** Record the measured slice once the turn is over. A receipt reads this, never a boundary re-derived later. */
+  const captureSlice = (): void => {
+    trace.slice = turnStart === null || turnEnd === null ? null : { start: turnStart, end: turnEnd }
+  }
+
   const readUsage = async (): Promise<Usage> => {
     try {
       const current = await Promise.race([
@@ -411,8 +569,12 @@ async function runUnitUnsafe(
         }),
       ])
       model = current.model ?? model
-      return addUsage(usageFromSession(current), extra)
+      const total = usageFromSession(current)
+      return addUsage(baseline ? subtractUsage(total, baseline) : total, extra)
     } catch {
+      // A `session.get` that fails or times out loses the session-reported part of this turn. Report what the engine
+      // counted itself (`extra`) rather than the session's lifetime totals: an undercount is honest, and a
+      // continuation billed for the whole conversation would be wrong by design.
       return extra
     }
   }
@@ -502,12 +664,24 @@ async function runUnitUnsafe(
 
       let final: ReturnType<typeof finalAssistant>
       try {
-        final = finalAssistant(await host.session.context({ sessionID }))
+        // ONLY this prompt's messages. A continuation's session also holds every earlier turn, and `finalAssistant`
+        // answers with the last assistant text it finds — so reading the whole transcript would return the PREVIOUS
+        // turn's answer (a false success when this turn produced nothing, and a swallowed provider error).
+        const messages = await host.session.context({ sessionID })
+        // Where THIS prompt landed: everything the transcript held before this prompt was sent. A repair turn is a
+        // separate prompt inside the same Unit, so the answer is read from this prompt's own messages — "the last user
+        // message" would move with a repair and could drift if the host added a user message of its own.
+        const from = promptStart
+        promptStart = messages.length
+        turnEnd = messages.length
+        final = finalAssistant(from === null ? messages : messages.slice(from))
       } catch (error) {
         return fail(`could not read the Unit transcript: ${stringifyError(error)}`, false, await readUsage())
       }
       model = final.model ?? model
       lastText = final.text ?? lastText
+      // This prompt's messages are now in the transcript; the slice must reach them.
+      captureSlice()
       // Stopped while the turn was being read: the stop wins over the answer.
       if (guard.aborted)
         return fail(interruptedMessage(reason()), reason() === "stopped" || reason() === "aborted", await readUsage())
@@ -515,7 +689,16 @@ async function runUnitUnsafe(
       if (!spec.schema) {
         if (final.text !== undefined) {
           attempts.push({ turn, path: "text", ok: true })
-          return { ok: true, value: final.text, sessionID, usage: await readUsage(), model, path: "text", attempts }
+          return {
+            ok: true,
+            value: final.text,
+            sessionID,
+            usage: await readUsage(),
+            model,
+            path: "text",
+            attempts,
+            slice: trace.slice,
+          }
         }
         if (binding.result) {
           attempts.push({ turn, path: "tool", ok: true })
@@ -527,6 +710,7 @@ async function runUnitUnsafe(
             model,
             path: "tool",
             attempts,
+            slice: trace.slice,
           }
         }
         attempts.push({ turn, path: "text", ok: false, error: final.error ?? "no assistant text" })
@@ -544,6 +728,7 @@ async function runUnitUnsafe(
           model,
           path: "tool",
           attempts,
+          slice: trace.slice,
         }
       }
       attempts.push({ turn, path: "tool", ok: false, error: binding.lastError ?? "workflow_result was not called" })
@@ -563,6 +748,7 @@ async function runUnitUnsafe(
               model,
               path: "text-json",
               attempts,
+              slice: trace.slice,
             }
           }
           lastError = formatIssues(valid.error)
@@ -620,7 +806,16 @@ async function runUnitUnsafe(
             ok: true,
             note: "usage estimated (the host reports none for extraction)",
           })
-          return { ok: true, value: valid.data, sessionID, usage: await readUsage(), model, path: "extract", attempts }
+          return {
+            ok: true,
+            value: valid.data,
+            sessionID,
+            usage: await readUsage(),
+            model,
+            path: "extract",
+            attempts,
+            slice: trace.slice,
+          }
         }
         attempts.push({
           turn: attempts.length,

@@ -527,7 +527,12 @@ export async function startGateway(config: GatewayConfig, options: GatewayOption
           if (parts[2] === "units" && parts[3] && parts.length === 4)
             return json({ unit: await service.getUnit(parts[1], parts[3]) }, 200, extra)
           if (parts[2] === "units" && parts[3] && parts[4] === "transcript" && parts.length === 5) {
-            return json(await service.getTranscript(parts[1], parts[3]), 200, extra)
+            // Accept both forms: `?whole=1` (what the web app sends) and `?whole=true` (what an OpenAPI-generated
+            // client may send, since the document declares a boolean). Silently treating `true` as false would hand
+            // back one turn where the caller asked for the conversation.
+            const flag = new URL(request.url).searchParams.get("whole")
+            const whole = flag === "1" || flag === "true"
+            return json(await service.getTranscript(parts[1], parts[3], { whole }), 200, extra)
           }
         }
         return fail("not_found", "no such route", extra)

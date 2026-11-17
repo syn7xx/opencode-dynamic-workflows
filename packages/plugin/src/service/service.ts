@@ -220,6 +220,37 @@ export function toTranscript(sessionID: string, messages: readonly HostMessage[]
   return { sessionID, messages: out, clipped }
 }
 
+/**
+ * Where each turn starts in a session's transcript, keyed by the Unit's ordinal.
+ *
+ * The engine opens every turn with a `user` message carrying that turn's prompt (`host.session.prompt({ text })`),
+ * and a session runs one turn at a time, so walking the Units in ordinal order and matching the next `user` message
+ * whose text is that prompt finds each boundary. Text comparison is on the exact prompt; when a prompt repeats
+ * verbatim the search continues from the previous boundary, which is what makes "re-check" twice in a row work.
+ *
+ * A Unit whose opening message cannot be found gets no entry: the caller then falls back to the whole session rather
+ * than showing the wrong slice.
+ */
+export function turnBoundaries(
+  messages: readonly TranscriptMessage[],
+  turns: ReadonlyArray<{ ordinal: number; prompt: string }>,
+): Map<number, number> {
+  const starts = new Map<number, number>()
+  let from = 0
+  for (const turn of turns) {
+    for (let cursor = from; cursor < messages.length; cursor++) {
+      const message = messages[cursor]!
+      if (message.role !== "user") continue
+      const text = message.parts.map((part) => ("text" in part ? (part.text ?? "") : "")).join("")
+      if (text !== turn.prompt) continue
+      starts.set(turn.ordinal, cursor)
+      from = cursor + 1
+      break
+    }
+  }
+  return starts
+}
+
 /** The name an inline Run shows until it is approved and its script says its real name. */
 const UNAPPROVED_NAME = "unapproved script"
 
@@ -356,9 +387,15 @@ export class WorkflowService {
     return unit
   }
 
-  /** A Unit's session, simplified for display (the web app's transcript view). */
-  async getTranscript(runId: string, unitId: string): Promise<GetTranscriptOutput> {
-    const unit = await this.getUnit(runId, unitId)
+  /**
+   * A Unit's transcript. A Unit that continued an earlier Unit's session (`agent(prompt, { session })`) gets ONLY its
+   * own turn by default, with `earlier` saying how much came before; `whole: true` returns the full conversation.
+   */
+  async getTranscript(runId: string, unitId: string, options: { whole?: boolean } = {}): Promise<GetTranscriptOutput> {
+    const run = this.deps.store.get(runId) ?? (await this.deps.journal.read(runId))?.run
+    if (!run) throw new WorkflowProtocolError("not_found", `No Run "${runId}" in this location.`)
+    const unit = run.units.find((candidate) => candidate.unitId === unitId)
+    if (!unit) throw new WorkflowProtocolError("not_found", `Run "${runId}" has no Unit "${unitId}".`)
     if (!unit.sessionID)
       throw new WorkflowProtocolError(
         "not_found",
@@ -373,7 +410,27 @@ export class WorkflowService {
         `The Unit's session is gone (${error instanceof Error ? error.message : String(error)}).`,
       )
     }
-    return toTranscript(unit.sessionID, messages)
+    const whole = toTranscript(unit.sessionID, messages)
+    // A session can carry several Units (`agent(prompt, { session })`): one conversation, several turns. The
+    // engine writes each turn's prompt as the user message that opens it, and turns run strictly one after another
+    // in one session, so the boundaries are recoverable from the transcript itself — no extra state to journal.
+    const turns = run.units
+      .filter((candidate) => candidate.sessionID === unit.sessionID)
+      .toSorted((a, b) => a.ordinal - b.ordinal)
+    if (turns.length <= 1) return whole
+    if (options.whole) return { ...whole, turns: turns.length }
+    const bounds = turnBoundaries(whole.messages, turns)
+    const start = bounds.get(unit.ordinal)
+    if (start === undefined) return { ...whole, turns: turns.length }
+    // The Unit's own turn: from its opening user message up to the next turn's (or the end).
+    const next = turns.find((candidate) => candidate.ordinal > unit.ordinal)
+    const end = next ? (bounds.get(next.ordinal) ?? whole.messages.length) : whole.messages.length
+    return {
+      ...whole,
+      messages: whole.messages.slice(start, end),
+      ...(start > 0 ? { earlier: start } : {}),
+      turns: turns.length,
+    }
   }
 
   async getResult(runId: string): Promise<{ runId: string; status: Run["status"]; result: unknown }> {

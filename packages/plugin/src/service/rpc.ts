@@ -40,6 +40,7 @@ import {
   SaveRunOutput,
   StartRunInput,
   StartRunOutput,
+  TranscriptRef,
   UnitRef,
 } from "../protocol"
 
@@ -54,7 +55,7 @@ export const WorkflowRpc = Rpc.define({
     getRun: { input: RunRef, output: GetRunOutput, errors },
     getUnit: { input: UnitRef, output: GetUnitOutput, errors },
     getResult: { input: RunRef, output: GetResultOutput, errors },
-    getTranscript: { input: UnitRef, output: GetTranscriptOutput, errors },
+    getTranscript: { input: TranscriptRef, output: GetTranscriptOutput, errors },
     getActivity: { input: RunRef, output: ActivityOutput, errors },
     listWorkflows: { input: Empty, output: ListWorkflowsOutput, errors },
     startRun: { input: StartRunInput, output: StartRunOutput, errors },
