@@ -23,9 +23,11 @@ import {
   type HostPermissionRule,
   type HostSessionInfo,
 } from "./host"
+import { isolationRules } from "./isolation"
 import { addUsage, emptyUsage, type ResultPath, type UnitAttempt, type Usage } from "./protocol"
 import { modelJsonSchema } from "./schema-bridge"
 import { formatIssues, type UnitBinding, type UnitIndex } from "./units"
+import type { IsolationPolicy } from "./workflow"
 
 /** Default subagent when a Unit names none — OpenCode V2's built-in general-purpose subagent. */
 export const DEFAULT_SUBAGENT = "general"
@@ -91,6 +93,12 @@ export interface UnitSpec {
   maxSteps?: number
   /** Author rules (workflow-level then unit-level); engine rules are appended after them. */
   permissions?: HostPermissionRule[]
+  /** Isolation policy; its rules are appended LAST (after engine rules) so they always win. Absent ⇒ unrestricted. */
+  isolation?: IsolationPolicy
+  /** MCP servers this Unit must not use (from `meta.isolation.mcp`); hidden + denied. Absent ⇒ unrestricted. */
+  hiddenMcpServers?: readonly string[]
+  /** Every MCP server name the process knows, to resolve `<server>_<tool>` → server. */
+  knownMcpServers?: readonly string[]
   ask: UnitBinding["ask"]
   permissionPolicy: UnitBinding["permissionPolicy"]
   /** Called once the session exists, with a handle that stops this Unit and the model the session resolved. */
@@ -384,7 +392,12 @@ async function runUnitUnsafe(
               location: spec.location,
             },
           },
-          permissions: [...(spec.permissions ?? []), ...ENGINE_UNIT_RULES],
+          permissions: [
+            ...(spec.permissions ?? []),
+            ...ENGINE_UNIT_RULES,
+            // Isolation goes LAST: last match wins, so it narrows anything the author or engine allowed above.
+            ...isolationRules(spec.isolation),
+          ],
           ...(spec.unitLocation ? { location: { directory: spec.unitLocation } } : {}),
         }),
       )
@@ -424,6 +437,8 @@ async function runUnitUnsafe(
     onStepLimit: () => stepLimit.abort(),
     ask: spec.ask,
     permissionPolicy: spec.permissionPolicy,
+    ...(spec.hiddenMcpServers && spec.hiddenMcpServers.length > 0 ? { hiddenMcpServers: spec.hiddenMcpServers } : {}),
+    ...(spec.knownMcpServers ? { knownMcpServers: spec.knownMcpServers } : {}),
   }
   const unbind = index.bind(binding)
   trace.release = () => {

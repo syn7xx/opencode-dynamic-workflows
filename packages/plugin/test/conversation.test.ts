@@ -46,7 +46,7 @@ describe("agent({ keepSession }) — a conversation", () => {
       { model: "acme/other" },
       { effort: "high" },
       { location: "/elsewhere" },
-      { isolation: "worktree" },
+      { worktree: true },
       { permissions: [{ action: "edit", resource: "*", effect: "allow" }] },
     ]
     for (const extra of cases) {

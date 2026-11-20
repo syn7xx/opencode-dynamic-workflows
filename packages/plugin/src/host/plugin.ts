@@ -28,6 +28,7 @@ import { confine } from "../capabilities"
 import { configureLimits, engineGlobal, locationSlot } from "../engine-global"
 import { ensureGateway, type GatewayHandle } from "../gateway/server"
 import type { EngineHost, HostSessionInfo } from "../host"
+import { isHiddenMcpTool } from "../isolation"
 import { createJournal, journalRoot, subscribeJournal } from "../journal"
 import { InvalidArgsError } from "../orchestrator"
 import { WorkflowProtocolError, type InteractionQuestion, type ProtocolEvent } from "../protocol"
@@ -38,6 +39,7 @@ import { parseConfig, type PluginConfig } from "../service/config"
 import { locateServiceForRun } from "../service/locate"
 import { WorkflowRpc } from "../service/rpc"
 import { WorkflowService, argsSchemaOf } from "../service/service"
+import type { IsolationPolicy } from "../workflow"
 import {
   RESULT_TOOL_DESCRIPTION,
   WORKFLOW_COMMAND_TEMPLATE,
@@ -50,6 +52,24 @@ import { loadAuthoringSkill } from "./skill"
 export const PLUGIN_ID = "opencode-dynamic-workflows"
 
 type ToolResult = { content: string; metadata?: Record<string, unknown> }
+
+/**
+ * The `isolation` argument shared by `workflow` and `workflow_inline`: a deny-by-default allow-list for skills,
+ * subagents, and MCP servers. Applies only when the Workflow declares no `meta.isolation` (an author's policy is
+ * never overridden). Omit a field to leave that axis unrestricted; `[]` allows nothing.
+ */
+const ISOLATION_INPUT_SCHEMA = {
+  type: "object",
+  description:
+    "Restrict this Run's Units to skill/subagent/MCP allow-lists (deny-by-default). Ignored when the Workflow " +
+    "declares meta.isolation. Omit a field to leave that axis unrestricted; [] allows nothing.",
+  additionalProperties: false,
+  properties: {
+    skills: { type: "array", items: { type: "string" }, description: "Skill IDs (path-derived)." },
+    subagents: { type: "array", items: { type: "string" }, description: "Subagent IDs." },
+    mcp: { type: "array", items: { type: "string" }, description: "MCP server names." },
+  },
+} as const
 
 function canonical(directory: string): string {
   try {
@@ -135,6 +155,26 @@ export function toQuestions(input: QuestionToolInput): InteractionQuestion[] {
   }))
 }
 
+/**
+ * Normalizes a tool's `isolation` input into a policy, or `undefined` when absent/malformed. Unknown shapes are
+ * ignored (the Run then follows `meta.isolation` or runs unrestricted) rather than failing the call.
+ */
+function toIsolation(input: unknown): IsolationPolicy | undefined {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return undefined
+  const record = input as { skills?: unknown; subagents?: unknown; mcp?: unknown }
+  const list = (value: unknown): string[] | undefined =>
+    Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : undefined
+  const skills = list(record.skills)
+  const subagents = list(record.subagents)
+  const mcp = list(record.mcp)
+  if (skills === undefined && subagents === undefined && mcp === undefined) return undefined
+  return {
+    ...(skills !== undefined ? { skills } : {}),
+    ...(subagents !== undefined ? { subagents } : {}),
+    ...(mcp !== undefined ? { mcp } : {}),
+  }
+}
+
 function protocolErrorText(error: unknown, schema?: Record<string, unknown> | null): string {
   if (error instanceof InvalidArgsError)
     return `${error.message}${schema ? `\nExpected args JSON Schema: ${JSON.stringify(schema)}` : ""}`
@@ -206,6 +246,15 @@ function ensureService(
     },
     gatewayUrl: () => (engineGlobal().singletons.get("gateway") as GatewayHandle | undefined)?.url ?? null,
     gatewayWeb: () => (engineGlobal().singletons.get("gateway") as GatewayHandle | undefined)?.web ?? false,
+    mcpServers: async () => {
+      try {
+        const listed = await ctx.mcp.list()
+        const data = (listed as { data?: Array<{ name?: unknown }> }).data ?? []
+        return data.map((server) => server.name).filter((name): name is string => typeof name === "string")
+      } catch {
+        return []
+      }
+    },
   })
   holder.gatewayAttached = () =>
     (engineGlobal().singletons.get("gateway") as GatewayHandle | undefined)?.attached(location) ?? false
@@ -359,6 +408,7 @@ export async function setup(ctx: Context): Promise<() => Promise<void>> {
         const name = input.name
         const listing = await service.listWorkflows()
         const schema = listing.workflows.find((entry) => entry.key === name)?.args ?? null
+        const isolation = toIsolation(input.isolation)
         return runForeground(
           () =>
             service.startRun(
@@ -366,6 +416,7 @@ export async function setup(ctx: Context): Promise<() => Promise<void>> {
               {
                 background: input.background === true,
                 ...(input.background === true ? {} : { signal: tc.signal }),
+                ...(isolation ? { isolation } : {}),
                 surface: "the workflow tool",
               },
             ),
@@ -421,6 +472,7 @@ export async function setup(ctx: Context): Promise<() => Promise<void>> {
           {
             background: input.background === true,
             ...(input.background === true ? {} : { signal: tc.signal }),
+            ...(toIsolation(input.isolation) ? { isolation: toIsolation(input.isolation) } : {}),
             surface: "workflow_inline",
           },
         ),
@@ -446,6 +498,7 @@ export async function setup(ctx: Context): Promise<() => Promise<void>> {
           resume: { type: "string", description: "runId: resume an interrupted or failed Run." },
           resumeFromRunId: { type: "string", description: "Alias of `resume`." },
           save_run: { type: "string", description: "runId: save an inline Run's script as a durable Workflow." },
+          isolation: ISOLATION_INPUT_SCHEMA,
         },
         additionalProperties: false,
       },
@@ -469,6 +522,7 @@ export async function setup(ctx: Context): Promise<() => Promise<void>> {
             type: "string",
             description: "Save the source as .opencode/workflows/<save>.ts instead of running it.",
           },
+          isolation: ISOLATION_INPUT_SCHEMA,
         },
         additionalProperties: false,
       },
@@ -577,6 +631,14 @@ export async function setup(ctx: Context): Promise<() => Promise<void>> {
     }
     // A Unit must ask through the broker, never through a native form nobody may be able to answer.
     delete event.tools.question
+    // MCP isolation: hide the tools of servers `meta.isolation.mcp` excludes. This is the reliable half — the model
+    // never sees the tool. `permission evaluate` denies them by name as a second layer.
+    if (binding.hiddenMcpServers && binding.hiddenMcpServers.length > 0) {
+      const known = binding.knownMcpServers ?? []
+      for (const tool of Object.keys(event.tools)) {
+        if (isHiddenMcpTool(tool, binding.hiddenMcpServers, known)) delete event.tools[tool]
+      }
+    }
     binding.steps += 1
     if (binding.steps > binding.maxSteps) binding.onStepLimit()
     event.system.push({ type: "text", text: QUESTION_INSTRUCTION } as never)
@@ -593,7 +655,19 @@ export async function setup(ctx: Context): Promise<() => Promise<void>> {
 
   await ctx.permission.hook("evaluate", (event) => {
     const binding = units.get(event.sessionID)
-    if (!binding || event.effect !== "ask") return
+    if (!binding) return
+    // MCP isolation second layer: deny a tool of an excluded server even if the model names it directly. Applies to
+    // every decision (not only `ask`: a saved approval or a permissive rule must not let it through).
+    if (binding.hiddenMcpServers && binding.hiddenMcpServers.length > 0) {
+      const known = binding.knownMcpServers ?? []
+      const toolName = `${event.action}`
+      if (isHiddenMcpTool(toolName, binding.hiddenMcpServers, known)) {
+        event.effect = "deny"
+        event.message = `Workflow isolation denies the MCP tool "${toolName}". Continue without it, or report that you need it.`
+        return
+      }
+    }
+    if (event.effect !== "ask") return
     const policy = binding.permissionPolicy()
     if (policy === "auto") {
       event.effect = "allow"

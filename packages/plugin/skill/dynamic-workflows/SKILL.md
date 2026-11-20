@@ -68,7 +68,7 @@ export default defineWorkflow({
 | `model`                                  | The launching session's model (`"provider/model#variant"`), or `null` for a headless/synthetic caller. What `agent(…, { model: "inherit" })` and a bare `effort` inherit.                                                                                                                                                                                                       |
 | `$`, `file`, `fetch`                     | Shell, files and HTTP, confined to the project (see below).                                                                                                                                                                                                                                                                                                                     |
 | `workflow(name, args?)`                  | Run a **saved** Workflow as one step of this Run and get its result (see below).                                                                                                                                                                                                                                                                                                |
-| `worktrees()`                            | The worktrees kept by `isolation: "worktree"` Units that changed files.                                                                                                                                                                                                                                                                                                         |
+| `worktrees()`                            | The worktrees kept by `worktree: true` Units that changed files.                                                                                                                                                                                                                                                                                                                |
 
 ### `agent()` options
 
@@ -84,6 +84,7 @@ export default defineWorkflow({
 | `timeoutMs`                    | A deadline for this Unit. There is none by default.                                                                                                                                                                                                                        |
 | `permissions`                  | Rules for this Unit's session, e.g. `[{ action: "edit", resource: "*", effect: "deny" }]`.                                                                                                                                                                                 |
 | `isolation`                    | `"worktree"`: run the Unit in a fresh git worktree — for Units that **edit files in parallel** (see below).                                                                                                                                                                |
+| `isolation`                    | Narrow THIS Unit's access below the Workflow (`{ skills?, subagents?, mcp? }`). Intersected, never replaces: a Unit can tighten, never widen. Use when one Unit legitimately needs fewer skills/subagents/MCP servers than the rest.                                       |
 | `location`                     | Run the Unit in a directory you prepared yourself.                                                                                                                                                                                                                         |
 | `session`                      | Send this turn into an existing session (`handle.sessionID`) — a follow-up, not a new Unit session. Refuses `subagent`, `model`, `effort`, `location`, `isolation`, `permissions`.                                                                                         |
 
@@ -262,7 +263,7 @@ Parallel Units editing the same checkout overwrite each other. Give each its own
 
 ```ts
 const results = await pipeline(modules, (m) =>
-  agent(`Migrate ${m} to the new API. Commit your change with a clear message.`, { label: m, isolation: "worktree" }),
+  agent(`Migrate ${m} to the new API. Commit your change with a clear message.`, { label: m, worktree: true }),
 )
 for (const tree of worktrees()) log(`review and merge: ${tree.branch} (${tree.directory})`)
 ```
@@ -271,6 +272,76 @@ A worktree is removed when its Unit changed nothing; otherwise it is kept and li
 script (or the person) can merge it — e.g. a final Unit, or `$\`git merge ${branch}\``. Worktrees cost setup time
 and disk: use them only for Units that write. The plugin must be active in the worktree, so it has to be
 configured in a committed `opencode.json` (or globally); otherwise those Units fail with a clear message.
+
+## Isolating what a Unit may use
+
+A Unit sees whatever skills, subagents, and MCP servers the surrounding OpenCode config exposes. When a Workflow must
+run predictably — regardless of what else is installed locally — declare `meta.isolation`: a **deny-by-default
+allow-list** on three independent axes. A name not listed cannot be used by any Unit of the Run.
+
+```ts
+import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"
+
+export default defineWorkflow({
+  meta: {
+    name: "audit",
+    description: "Read-only audit that cannot touch the delivery toolchain",
+    isolation: { skills: ["code-markup"], subagents: ["explore"], mcp: ["playwright"] },
+  },
+  async run({ agent }) {
+    await agent("audit the repo", { subagent: "explore" })
+  },
+})
+```
+
+- Each axis is independent: **omit** a field to leave that axis unrestricted; `[]` allows nothing on it.
+- A Unit naming a subagent outside `isolation.subagents` fails **before a session is created**, with a clear message —
+  a misconfiguration surfaces immediately, not as a denied tool mid-turn.
+- MCP is enforced twice: the disallowed servers' tools are **hidden** from the Unit's toolset (the model never sees
+  them) and, as a second layer, denied by name if the model invents one.
+
+**Narrow-only, three levels.** Every level is intersected (`meta ∩ unit ∩ caller`), so nothing can widen
+anything else:
+
+| Level    | Where                                                        | When to use                                                                  |
+| -------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| Imported | `import manifest from "./workflows.json"` → `meta.isolation` | the policy lives in a JSON file you import; the plugin reads no files itself |
+| Workflow | `meta.isolation`                                             | the default for the whole Run — declare it here                              |
+| Unit     | `agent(prompt, { isolation })`                               | one Unit legitimately needs fewer skills/subagents/MCP than the rest         |
+| Caller   | `workflow({ isolation })`                                    | an ad-hoc bound for a Workflow that declares nothing                         |
+
+A policy kept in a JSON file (e.g. `workflows/workflows.json`) is imported, not read by the plugin:
+
+```ts
+// workflows/audit.ts — the policy is inlined from the imported JSON by the bundler
+import manifest from "./workflows.json"
+// meta: { …, isolation: manifest.workflows.audit.isolation }
+```
+
+Tighten a single Unit when it needs a smaller surface than the Workflow:
+
+```ts
+await agent("review only", { subagent: "explore", isolation: { mcp: [] } })
+```
+
+`withIsolation(ctx, policy)` returns a view whose `agent` carries the narrower policy — sugar over the Unit `isolation` for a region
+where many Units share a tighter policy:
+
+```ts
+import { withIsolation } from "@syn7xx/opencode-dynamic-workflows/workflow"
+
+async run(ctx) {
+  const viewing = withIsolation(ctx, { mcp: ["playwright"] })
+  await viewing.agent("look, don't touch")
+}
+```
+
+It is **not a security boundary**: `parallel`/`pipeline` thunks close over whatever `ctx` is in scope, so a thunk
+that calls the original `ctx.agent` bypasses the view. Use the Unit `isolation` option when a Unit must be provably narrowed.
+
+Guidance: put the Run-wide bound in `meta.isolation` (one place, easy to review); reach for the Unit `isolation` only when a
+Unit genuinely differs. Do not use permissions for isolation — a `permissions` rule can `allow` but cannot narrow
+what `meta.isolation` already permits.
 
 ## pipeline by default
 

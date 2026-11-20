@@ -339,6 +339,113 @@ describe("durable resume — a decomposed Workflow resumes from its own journal"
   })
 })
 
+describe("isolation comes from a JSON import in the Workflow, intersected with meta and caller (narrow-only)", () => {
+  const made: string[] = []
+  afterAll(() => Promise.all(made.map((dir) => rm(dir, { recursive: true, force: true }))))
+
+  /**
+   * A Workflow that IMPORTS its isolation from `workflows.json` (no filesystem read by the plugin) and passes it to
+   * `meta.isolation`. This is how a preset/manifest policy reaches a Run: an ordinary JSON import, inlined by the
+   * bundler.
+   */
+  async function projectWith(importedIsolation: unknown, metaIsolation?: unknown): Promise<string> {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "wf-iso-levels-"))
+    made.push(dir)
+    await Bun.write(
+      path.join(dir, ".opencode", "workflows", "workflows.json"),
+      JSON.stringify({ workflows: { levels: { isolation: importedIsolation } } }),
+    )
+    const meta = metaIsolation ? `, ${JSON.stringify(metaIsolation)}` : ""
+    await Bun.write(
+      path.join(dir, ".opencode", "workflows", "levels.ts"),
+      `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"\n` +
+        `import manifest from "./workflows.json"\n` +
+        `const iso = manifest.workflows.levels.isolation\n` +
+        `export default defineWorkflow({ meta: { name: "levels", description: "d", isolation: iso${meta} }, async run({ agent }) {\n` +
+        `  return agent("hi", { label: "u", subagent: "NodeJsDeveloper" })\n` +
+        `} })\n`,
+    )
+    return dir
+  }
+
+  it("the Workflow's imported + meta isolation is applied to every Unit session", async () => {
+    const dir = await projectWith({ skills: ["b"], subagents: ["NodeJsDeveloper"] })
+    const { service: svc, host } = service({ location: dir, host: { reply: { text: "ok" } } })
+    const started = await svc.startRun({ name: "levels", args: {}, parentSessionID: "p" })
+    expect((await started.done).run.status).toBe("succeeded")
+    const created = host.creates.find((create) => create.agent === "NodeJsDeveloper")!
+    const skillRules = created.permissions.filter((rule) => rule.action === "skill")
+    expect(skillRules).toEqual([
+      { action: "skill", resource: "*", effect: "deny" },
+      { action: "skill", resource: "b", effect: "allow" },
+    ])
+  })
+
+  it("a caller override cannot widen the Workflow's policy: intersection, never replacement", async () => {
+    const dir = await projectWith({ skills: ["a"] })
+    const { service: svc, host } = service({ location: dir, host: { reply: { text: "ok" } } })
+    // Caller asks for ["a","z"] — "z" is not in the Workflow's policy, so the intersection keeps only "a".
+    const started = await svc.startRun(
+      { name: "levels", args: {}, parentSessionID: "p" },
+      { isolation: { skills: ["a", "z"] } },
+    )
+    expect((await started.done).run.status).toBe("succeeded")
+    const created = host.creates.find((create) => create.agent === "NodeJsDeveloper")!
+    const skillRules = created.permissions.filter((rule) => rule.action === "skill")
+    expect(skillRules).toEqual([
+      { action: "skill", resource: "*", effect: "deny" },
+      { action: "skill", resource: "a", effect: "allow" },
+    ])
+  })
+})
+
+describe("isolation from a Workflow's meta reaches every Unit session", () => {
+  const made: string[] = []
+  afterAll(() => Promise.all(made.map((dir) => rm(dir, { recursive: true, force: true }))))
+
+  it("meta.isolation is applied to the Unit's ruleset, appended last", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "wf-isolation-"))
+    made.push(dir)
+    await Bun.write(
+      path.join(dir, ".opencode", "workflows", "iso.ts"),
+      `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"\n` +
+        `export default defineWorkflow({ meta: { name: "iso", description: "d", isolation: { subagents: ["NodeJsDeveloper"] } }, async run({ agent }) {\n` +
+        `  return agent("hi", { label: "u", subagent: "NodeJsDeveloper" })\n` +
+        `} })\n`,
+    )
+    const { service: svc, host } = service({ location: dir, host: { reply: { text: "ok" } } })
+    const started = await svc.startRun({ name: "iso", args: {}, parentSessionID: "p" })
+    expect((await started.done).run.status).toBe("succeeded")
+    const created = host.creates.find((create) => create.agent === "NodeJsDeveloper")
+    expect(created).toBeDefined()
+    // Isolation rules are last in the session's ruleset (last match wins).
+    expect(created!.permissions.slice(-2)).toEqual([
+      { action: "subagent", resource: "*", effect: "deny" },
+      { action: "subagent", resource: "NodeJsDeveloper", effect: "allow" },
+    ])
+  })
+
+  it("a Workflow naming a subagent outside meta.isolation fails fast (no session created)", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "wf-isolation-deny-"))
+    made.push(dir)
+    await Bun.write(
+      path.join(dir, ".opencode", "workflows", "iso-bad.ts"),
+      `import { defineWorkflow } from "@syn7xx/opencode-dynamic-workflows/workflow"\n` +
+        `export default defineWorkflow({ meta: { name: "iso-bad", description: "d", isolation: { subagents: ["NodeJsDeveloper"] } }, async run({ agent }) {\n` +
+        `  return agent("hi", { label: "u", subagent: "ForeignAgent" })\n` +
+        `} })\n`,
+    )
+    const { service: svc, host } = service({ location: dir, host: { reply: { text: "ok" } } })
+    const started = await svc.startRun({ name: "iso-bad", args: {}, parentSessionID: "p" })
+    const { run } = await started.done
+    // The Unit was rejected before any session existed for that agent.
+    expect(host.creates.some((create) => create.agent === "ForeignAgent")).toBe(false)
+    // A Unit-less failure is recorded on the Run's errors (no Unit emitted).
+    expect(run.units.length).toBe(0)
+    expect(run.errors[0]?.error).toContain("is not in the isolation allow-list")
+  })
+})
+
 describe("resume — a replayed Unit's receipt reads the original Run's session", () => {
   it("threads the recorded sessionID through the ReplayPlan to the receipt's toolCalls, across repeated resumes", async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), "wf-receipt-resume-"))

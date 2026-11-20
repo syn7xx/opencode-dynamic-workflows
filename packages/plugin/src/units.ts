@@ -55,6 +55,13 @@ export interface UnitBinding {
   ask: (questions: InteractionQuestion[], signal: AbortSignal) => Promise<UnitAskResult | null>
   /** Workflow permission policy for this Unit's `ask` decisions (see `broker.ts`). */
   permissionPolicy: () => "ask" | "auto" | "deny"
+  /**
+   * MCP isolation for this Unit (from `meta.isolation.mcp`): the servers it must not use. `undefined` → unrestricted.
+   * The `context` hook hides these servers' tools and `permission evaluate` denies them by name.
+   */
+  hiddenMcpServers?: readonly string[]
+  /** Every MCP server name the process knew when the Unit started (to resolve `<server>_<tool>` → server). */
+  knownMcpServers?: readonly string[]
 }
 
 export type SubmitResult = { ok: true } | { ok: false; error: string }

@@ -49,10 +49,26 @@ export interface WorkflowMeta<S extends z.ZodType = z.ZodType> {
   /**
    * Permission rules applied to every Unit session of this Workflow, after the subagent's own rules (last match
    * wins). Use them to allow exactly what the Units need, e.g. `{ action: "edit", resource: "src/**", effect: "allow" }`.
+   *
+   * Complementary to {@link WorkflowMeta.isolation}: `permissions` is the raw, ordered escape hatch for tools the
+   * allow-list does not name (shell, edits, reads); `isolation` is the curated allow-list for skills, subagents and
+   * MCP servers. They are composed, not merged: `permissions` first, then the engine rules, then isolation rules.
    */
   permissions?: PermissionRule[]
   /** Hard limits (defaults: 1000 Units per Run, 4096 items per parallel/pipeline call, 250 model steps per Unit). */
   limits?: { maxUnits?: number; maxItemsPerCall?: number; maxUnitSteps?: number }
+  /**
+   * Isolation of this Workflow's Units from ambient skills, subagents, and MCP servers — a deny-by-default
+   * allow-list, distinct from the raw {@link WorkflowMeta.permissions} rules.
+   *
+   * When set, every Unit session gets a deny-by-default ruleset for `skill`, `subagent` (and MCP at the tool level)
+   * with only the listed IDs allowed, appended LAST (after `meta.permissions`, unit rules, and the engine's own
+   * rules). Last match wins in OpenCode, so this narrows what any earlier rule could otherwise permit — isolation
+   * only ever restricts, never grants.
+   *
+   * Omit it and Units see whatever the surrounding configuration exposes (the pre-existing behavior).
+   */
+  isolation?: IsolationPolicy
   /**
    * Zod schema for the Run's `args`. When present, the caller's `args` are validated against it before any Unit
    * launches — invalid input fails the Run immediately, naming the offending field — and `ctx.args` is typed
@@ -61,6 +77,34 @@ export interface WorkflowMeta<S extends z.ZodType = z.ZodType> {
   args?: S
   /** How this Workflow's questions and permission requests are handled. */
   interaction?: InteractionPolicy
+}
+
+/**
+ * Isolation of a Workflow's Units from ambient skills, subagents, and MCP servers.
+ *
+ * Only ever NARROWS: the engine emits `deny *` then an `allow` for each listed ID, appended last so it wins. A
+ * `skill`/`subagent` not listed here cannot be loaded or launched by any Unit of the Run, regardless of what the
+ * surrounding configuration would otherwise permit.
+ *
+ * - `undefined` for a field means "no restriction on that axis" (the pre-existing behavior).
+ * - `[]` means "nothing allowed" (strictest).
+ * - Omit `isolation` entirely to leave the Run unrestricted (default).
+ *
+ * Levels intersect (narrow-only): a Workflow's policy ∩ a Unit's policy ∩ the caller's override. Raw, arbitrary
+ * rules are a separate concept — see `meta.permissions` / `agent(..., { permissions })`.
+ */
+export interface IsolationPolicy {
+  /** Skill IDs (path-derived, not the frontmatter name) any Unit may load. */
+  skills?: string[]
+  /** Subagent IDs any Unit may launch. The Unit's own `subagent` is checked against this set by the engine. */
+  subagents?: string[]
+  /**
+   * MCP servers any Unit may use. Each server's tools (`<server>_<tool>`) are denied for every Unit of the Run
+   * except those whose server is listed here. Unlike skills/subagents this cannot be expressed as one permission
+   * action: the engine hides the disallowed servers' tools from the Unit's toolset in the `context` hook and, as a
+   * second layer, denies them by name. `undefined` leaves MCP unrestricted; `[]` allows none.
+   */
+  mcp?: string[]
 }
 
 /** How a Run's interactions are handled — per Workflow, overriding the engine's defaults. */
@@ -211,11 +255,21 @@ export interface AgentOpts<S extends z.ZodType | JsonSchemaInput | undefined = u
    */
   location?: string
   /**
-   * `"worktree"`: run this Unit in a fresh git worktree of the project (for Units that edit files in parallel).
-   * Removed afterwards when the Unit changed nothing; otherwise kept — see `ctx.worktrees()` to merge the work.
-   * The plugin must be active in the worktree (configure it in a COMMITTED opencode.json, or globally).
+   * Run this Unit in a fresh git worktree of the project (for Units that edit files in parallel). Removed afterwards
+   * when the Unit changed nothing; otherwise kept — see `ctx.worktrees()` to merge the work. The plugin must be
+   * active in the worktree (configure it in a COMMITTED opencode.json, or globally).
    */
-  isolation?: "worktree"
+  worktree?: boolean
+  /**
+   * Narrow THIS Unit's isolation below what the Workflow allows. Intersected with (never a replacement for)
+   * `meta.isolation` and any Run-level policy: a Unit can make its own access stricter, never looser. Use it when
+   * one Unit legitimately needs fewer skills/subagents/MCP servers than the rest of the Workflow.
+   *
+   * Omit an axis to leave it as the Workflow set it; `[]` allows nothing on that axis.
+   *
+   * Refused for a continuation (`agent({ session })`): the session's ruleset was fixed when it was created.
+   */
+  isolation?: IsolationPolicy
   /** Permission rules for this Unit's session, applied after the Workflow's `meta.permissions`. */
   permissions?: PermissionRule[]
   /**
@@ -225,8 +279,8 @@ export interface AgentOpts<S extends z.ZodType | JsonSchemaInput | undefined = u
    * cache.
    *
    * Only `schema`, `retries`, `timeoutMs`, `label` and `phase` may accompany it. Everything the session already
-   * decided — `subagent`/`agentType`, `model`, `effort`, `location`, `isolation`, `permissions` — is refused
-   * rather than silently ignored: the host's `prompt` takes a session id and text, nothing else.
+   * decided — `subagent`/`agentType`, `model`, `effort`, `location`, `worktree`, `isolation`, `permissions` — is
+   * refused rather than silently ignored: the host's `prompt` takes a session id and text, nothing else.
    *
    * One turn at a time: never run two calls against the same session concurrently.
    */
@@ -292,7 +346,16 @@ export interface UnitHandle<T> extends UnitReceipt<T> {
  */
 export type ContinuationOpts<S extends z.ZodType | JsonSchemaInput | undefined = undefined> = Omit<
   AgentOpts<S>,
-  "subagent" | "agentType" | "model" | "effort" | "location" | "isolation" | "permissions" | "session" | "keepSession"
+  | "subagent"
+  | "agentType"
+  | "model"
+  | "effort"
+  | "location"
+  | "worktree"
+  | "isolation"
+  | "permissions"
+  | "session"
+  | "keepSession"
 >
 
 /**
@@ -526,7 +589,7 @@ export interface WorkflowContext<A = unknown> extends WorkflowCapabilities {
    * `meta.args` (an invalid call throws). One level only: calling `workflow` inside it throws.
    */
   workflow: (name: string, args?: unknown) => Promise<unknown>
-  /** Worktrees kept by `isolation: "worktree"` Units that changed something, in the order they finished. */
+  /** Worktrees kept by `worktree: true` Units that changed something, in the order they finished. */
   worktrees: () => ReadonlyArray<{ unit: string; directory: string; branch: string | null }>
   /** The Run's abort signal. Aborting stops launching queued Units AND interrupts in-flight Unit sessions; each dropped Unit is recorded in {@link errors}. */
   signal: AbortSignal
@@ -584,4 +647,54 @@ export function defineWorkflow<S extends z.ZodType = z.ZodType>(
     throw new TypeError("defineWorkflow: `run` must be a function")
   }
   return config
+}
+
+/**
+ * A view of a Workflow's context whose `agent` (and the Units inside `parallel`/`pipeline`) run under a NARROWER
+ * isolation than the Workflow allows. Sugar over `agent(prompt, { isolation })` for the case where MANY Units in one
+ * region of the script share a tighter policy:
+ *
+ *     const audited = withIsolation(ctx, { mcp: ["playwright"] })
+ *     await audited.agent("review only", { label: "review" })
+ *
+ * Narrow-only, like the Unit `isolation`: the policy is intersected with the Workflow's own (a view can tighten,
+ * never widen).
+ *
+ * **Not a security boundary.** `parallel`/`pipeline` thunks take no arguments and close over whatever `ctx` is in
+ * scope, so a thunk that calls the ORIGINAL `ctx.agent` bypasses the view. Use this for legibility, and
+ * `agent(prompt, { isolation })` when a Unit must be provably narrowed.
+ */
+export function withIsolation<A>(ctx: WorkflowContext<A>, isolation: IsolationPolicy): WorkflowContext<A> {
+  const narrowed = <S extends z.ZodType | JsonSchemaInput | undefined = undefined>(
+    prompt: string,
+    opts: AgentOpts<S> = {} as AgentOpts<S>,
+  ): ReturnType<AgentFn> =>
+    ctx.agent(prompt, {
+      ...opts,
+      isolation: mergeIsolation(opts.isolation, isolation),
+    } as AgentOpts<S>) as ReturnType<AgentFn>
+  return { ...ctx, agent: narrowed as AgentFn }
+}
+
+/**
+ * Combine two Unit-level isolation policies: intersection per axis, so a nested `withIsolation` view stays
+ * narrow-only. `undefined` on a side means "that side imposes nothing".
+ */
+function mergeIsolation(a: IsolationPolicy | undefined, b: IsolationPolicy): IsolationPolicy {
+  const axis = (key: keyof IsolationPolicy): string[] | undefined => {
+    const left = a?.[key]
+    const right = b[key]
+    if (left === undefined) return right
+    if (right === undefined) return left
+    const allowed = new Set(right)
+    return left.filter((id) => allowed.has(id))
+  }
+  const skills = axis("skills")
+  const subagents = axis("subagents")
+  const mcp = axis("mcp")
+  return {
+    ...(skills !== undefined ? { skills } : {}),
+    ...(subagents !== undefined ? { subagents } : {}),
+    ...(mcp !== undefined ? { mcp } : {}),
+  }
 }

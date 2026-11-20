@@ -7,6 +7,7 @@ import {
   type HostModelRef,
   type HostPermissionRule,
 } from "./host"
+import { intersectIsolation, mcpServersToHide, subagentAllowed } from "./isolation"
 import { emptyUsage, type Unit, type Usage } from "./protocol"
 import { DEFAULT_SUBAGENT, runUnit, stringifyError, type TurnSlice, type UnitRunResult } from "./runner"
 import { toUnitOutput } from "./runs"
@@ -29,6 +30,7 @@ import type {
   AskOptions,
   AskQuestion,
   ContinuationOpts,
+  IsolationPolicy,
   UnitHandle,
   UnitReceipt,
   UnitToolCall,
@@ -57,7 +59,7 @@ export interface EngineState {
   usage: Usage
   /** Units started and not yet settled — including ones the script never awaited. */
   inflight: Set<Promise<unknown>>
-  /** Worktrees kept by `isolation: "worktree"` Units that changed something. */
+  /** Worktrees kept by `worktree: true` Units that changed something. */
   worktrees: Array<{ unit: string; directory: string; branch: string | null }>
   /**
    * Sessions this Run may continue (`agent(…, { keepSession })`), with what the session decided at create time and
@@ -219,6 +221,10 @@ export interface CreateContextInput<A> {
   permissionPolicy?: UnitBinding["permissionPolicy"]
   /** Workflow-level rules applied to every Unit session. */
   permissions?: HostPermissionRule[]
+  /** Isolation from ambient skills/subagents; its rules are appended LAST (after engine rules) in the runner. */
+  isolation?: IsolationPolicy
+  /** Every MCP server name the process knows — needed to resolve `<server>_<tool>` for `meta.isolation.mcp`. */
+  mcpServers?: string[]
   limits?: Partial<RunLimits>
   /** A limit was hit: the orchestrator stops the Run with this message. */
   onLimit?: (message: string) => void
@@ -286,6 +292,7 @@ function continuationError(opts: AgentOpts<z.ZodType>): string | null {
     ["model", opts.model],
     ["effort", opts.effort],
     ["location", opts.location],
+    ["worktree", opts.worktree],
     ["isolation", opts.isolation],
     ["permissions", opts.permissions],
   ]
@@ -443,6 +450,24 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
       state.errors.push({ unit: label ?? subagent, prompt, subagent, error: message })
       return outcome(null)
     }
+    // Effective isolation for THIS Unit: the Workflow's policy intersected with the Unit's own `restrict` (narrow-only
+    // — a Unit can tighten, never widen). A continuation keeps its session's ruleset, so `restrict` is refused there
+    // (see the continuation check below) and only the Workflow policy applies.
+    const unitIsolation = continuing ? input.isolation : intersectIsolation(input.isolation, opts.isolation)
+    // MCP servers this Unit must not see, from the effective policy and the process's server list.
+    const hiddenMcpServers = mcpServersToHide(unitIsolation, input.mcpServers ?? []) ?? []
+    // Isolation: a Unit may only run on a subagent the effective allow-list permits. Checked before any session
+    // exists, so a misconfigured Workflow fails fast with a clear message rather than being denied mid-turn.
+    // `undefined` isolation or `undefined subagents` means unrestricted.
+    if (!subagentAllowed(unitIsolation, subagent)) {
+      const allowed = unitIsolation?.subagents ?? []
+      const message =
+        `agent(): subagent ${JSON.stringify(subagent)} is not in the isolation allow-list ` +
+        `[${allowed.map((name) => JSON.stringify(name)).join(", ")}]. Add it to meta.isolation.subagents, this ` +
+        `Unit's \`restrict\`, or choose one of the allowed subagents.`
+      state.errors.push({ unit: label ?? subagent, prompt, subagent, error: message })
+      return outcome(null)
+    }
     const unit = newUnit({
       runId: input.runId,
       unitId,
@@ -564,8 +589,8 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
         let current: Unit = { ...unit, status: "running", startedAt: Date.now() }
         emit(current)
         let worktree: { directory: string; branch: string | null; base: string | null } | null = null
-        if (opts.isolation === "worktree" && !opts.location) {
-          if (!input.host.worktree) throw new UnitSetupError('isolation: "worktree" is not available on this host')
+        if (opts.worktree === true && !opts.location) {
+          if (!input.host.worktree) throw new UnitSetupError("worktree: true is not available on this host")
           try {
             worktree = await input.host.worktree.create(`wf-${input.runId.slice(0, 8)}-${ordinal}`)
           } catch (error) {
@@ -602,6 +627,9 @@ export function createWorkflowContext<A>(input: CreateContextInput<A>): Workflow
           ...(input.slot ? { slot: input.slot } : {}),
           maxSteps: limits.maxUnitSteps,
           permissions: [...(input.permissions ?? []), ...(opts.permissions ?? [])],
+          isolation: unitIsolation,
+          ...(input.mcpServers ? { knownMcpServers: input.mcpServers } : {}),
+          ...(hiddenMcpServers.length > 0 ? { hiddenMcpServers } : {}),
           ask: noAgentQuestions,
           permissionPolicy: input.permissionPolicy ?? (() => "deny"),
           onSession: (id, stop, resolved, sessionDirectory) => {

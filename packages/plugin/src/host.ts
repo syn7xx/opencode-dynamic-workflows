@@ -75,7 +75,7 @@ export interface HostSessionApi {
   get(input: { sessionID: string }): Promise<HostSessionInfo>
 }
 
-/** Git worktrees for `agent({ isolation: "worktree" })` (OpenCode's own worktree service). */
+/** Git worktrees for `agent({ worktree: true })` (OpenCode's own worktree service). */
 export interface HostWorktreeApi {
   /** Create a worktree of the Run's project; `base` is the commit it starts from. */
   create(name: string): Promise<{ directory: string; branch: string | null; base: string | null }>
