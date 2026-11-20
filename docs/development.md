@@ -55,7 +55,7 @@ Point a test project at the package directory (OpenCode resolves a directory plu
   build whose desktop app hosts `./gui-experimental` bundles; it loads beside the TUI, not instead of it.
 - **Web app changes**: `bun run --cwd packages/web dev` serves it with hot reload and forwards `/v1` to
   `WF_GATEWAY` (default `http://127.0.0.1:4320`).
-- **Worktree Units** (`isolation: "worktree"`) only work when the plugin is configured in a committed
+- **Worktree Units** (`worktree: true`) only work when the plugin is configured in a committed
   `opencode.json` (or globally): worktrees check out the committed tree.
 - **Do not load the checkout where the published package is installed.** A checkout (plugin id = its path) and the
   npm package (id `@syn7xx/opencode-dynamic-workflows`) are two plugins to OpenCode: both load, both register

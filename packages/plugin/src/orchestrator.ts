@@ -15,7 +15,7 @@ import type { Run, WorkflowIdentity } from "./protocol"
 import { isTerminal, newRun, type RunStore } from "./runs"
 import { Semaphore } from "./scheduler"
 import type { UnitIndex } from "./units"
-import type { DefineWorkflowConfig, WorkflowMeta } from "./workflow"
+import type { DefineWorkflowConfig, IsolationPolicy, WorkflowMeta } from "./workflow"
 
 /** Units in flight for one Run: the author's `meta.concurrency`, never above the configured cap. */
 export function resolveConcurrency(fromMeta: number | undefined, cap = DEFAULT_UNITS_PER_RUN): number {
@@ -110,6 +110,17 @@ export interface RunWorkflowInput {
   resumeOf?: string | null
   /** Rules applied to every Unit session in addition to `meta.permissions`. */
   permissions?: HostPermissionRule[]
+  /**
+   * Every MCP server name the process knows (`ctx.mcp.list()`), captured at Run start. Used to resolve a tool name
+   * `<server>_<tool>` back to its server so `meta.isolation.mcp` can hide the right servers. Absent → MCP isolation
+   * is not enforced (no server list to compare against).
+   */
+  mcpServers?: string[]
+  /**
+   * Isolation for this Run (skills/subagents/MCP), resolved by the caller as `meta.isolation ?? override`.
+   * The orchestrator applies it as-is; `undefined` ⇒ unrestricted.
+   */
+  isolation?: IsolationPolicy
   /** Extra context members. */
   extend?: Record<string, unknown>
   /** `ctx.$` / `ctx.file` / `ctx.fetch`: off (with the reason) or on. */
@@ -257,6 +268,9 @@ export async function runWorkflow(input: RunWorkflowInput): Promise<RunWorkflowO
       limits: { ...meta.limits, ...input.limits },
       ...(input.slot ? { slot: input.slot } : {}),
       permissions: [...(meta.permissions ?? []), ...(input.permissions ?? [])],
+      // Isolation from ambient skills/subagents/MCP. Set by the service as `meta.isolation ?? caller override`.
+      ...(input.isolation ? { isolation: input.isolation } : {}),
+      ...(input.mcpServers ? { mcpServers: input.mcpServers } : {}),
       permissionPolicy: () => resolvePermissionPolicy(meta),
       ask: (form, options) =>
         input.broker.ask({
@@ -325,6 +339,7 @@ export async function runWorkflow(input: RunWorkflowInput): Promise<RunWorkflowO
         workflow: `${meta.name} › ${child.meta.name}`,
         args: parsed,
         permissions: [...(child.meta.permissions ?? []), ...(input.permissions ?? [])],
+        isolation: child.meta.isolation ?? base.isolation,
         prefix: `${name} › `,
         extend: {
           ...capabilities(),

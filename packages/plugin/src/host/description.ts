@@ -22,7 +22,7 @@ concurrency?, budget?, permissions?, limits? }. run(ctx) returns the result. ctx
     session's model, or null for a headless caller — what { model: "inherit" } and a bare { effort } inherit)
   - ask(question, { fallback }) — ask the person; the fallback answers when nobody is watching.
   - $\\\`cmd \\\${value}\\\` / file.read|write / fetch — shell, files, HTTP confined to the project.
-  - workflow(name, args) — run a saved Workflow as one step · agent(…, { isolation: "worktree" }) for Units that edit
+  - workflow(name, args) — run a saved Workflow as one step · agent(…, { worktree: true }) for Units that edit
     files in parallel; worktrees() lists the ones kept.`
 
 const EXAMPLE = `Example — review each file, verify each finding as soon as its review is done:
@@ -54,6 +54,10 @@ MODES (pick one):
     Resume replays the Units a Run already finished (matched by start order and prompt) and runs the rest live.
   - save_run: "<runId>" — keep an inline Run's script as a saved Workflow.
 To run a script you write yourself, use \`workflow_inline\`. Pass args as JSON values, not JSON strings.
+
+ISOLATION (optional, per Run): pass \`isolation: { skills?: string[], subagents?: string[], mcp?: string[] }\` to
+restrict this Run's Units to an allow-list — every other skill/subagent/MCP server is denied (deny-by-default; []
+allows nothing). A Workflow that declares \`meta.isolation\` keeps it: a caller can neither widen nor narrow it.
 
 ${SKILL_POINTER}
 

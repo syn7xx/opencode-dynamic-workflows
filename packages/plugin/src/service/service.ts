@@ -17,6 +17,7 @@ import type { Broker } from "../broker"
 import type { ReplayPlan, ReplayUnit } from "../context"
 import { runSlot, runSlotsFull, unitSlot } from "../engine-global"
 import { formatModel, toHostModel, type EngineHost, type HostMessage, type HostModelRef } from "../host"
+import { intersectIsolation } from "../isolation"
 import { ownerAlive, type Journal } from "../journal"
 import { hasRelativeImports, loadWorkflow, loadWorkflowConfig, sha256 } from "../loader"
 import { runWorkflow, type RunWorkflowOutput } from "../orchestrator"
@@ -40,7 +41,7 @@ import { MAX_RESTARTS } from "../runner"
 import { elideEvent, elideRun, isTerminal, newRun, toLibraryEntry, type RunStore } from "../runs"
 import { toJsonSchema } from "../schema-bridge"
 import type { UnitIndex } from "../units"
-import type { DefineWorkflowConfig } from "../workflow"
+import type { DefineWorkflowConfig, IsolationPolicy } from "../workflow"
 import type { PluginConfig } from "./config"
 
 export const PLUGIN_NAME = "@syn7xx/opencode-dynamic-workflows"
@@ -105,6 +106,11 @@ export interface ServiceDeps {
   gatewayUrl: () => string | null
   /** Whether the running Gateway serves the web app (it is shared by every location, with its own settings). */
   gatewayWeb?: () => boolean
+  /**
+   * Names of every MCP server the process knows, for `meta.isolation.mcp`. Called at Run start so
+   * `ctx.mcp.list()` reflects the live set. Absent (or throwing) → MCP isolation is skipped, never fails the Run.
+   */
+  mcpServers?: () => Promise<string[]>
 }
 
 export interface StartOptions {
@@ -115,6 +121,11 @@ export interface StartOptions {
   replay?: ReplayPlan
   resumeOf?: string | null
   identity?: WorkflowIdentity
+  /**
+   * Isolation override for this Run, from a tool call. Intersected with `meta.isolation` (narrow-only): a caller can
+   * tighten a Workflow's policy, never widen it.
+   */
+  isolation?: IsolationPolicy
   /**
    * The caller's model to record and inherit, overriding what `parentSessionID` would resolve to. Resume passes the
    * value journaled with the original Run, so a Unit with `model: "inherit"` keeps the caller's model even when the
@@ -643,6 +654,9 @@ export class WorkflowService {
           })
         }
         if (!config) throw new Error("the Workflow was not loaded")
+        // Isolation is intersected (narrow-only): the Workflow's `meta.isolation` ∩ the caller's override.
+        // Any preset/manifest policy already reached `meta` through an ordinary JSON import in the Workflow file.
+        const effectiveIsolation = intersectIsolation(config.meta.isolation, options.isolation)
         if (signal.aborted) {
           await this.endQueued(runId, "stopped before it started", "stopped")
           return { error: "stopped before it started", run: store.get(runId)! }
@@ -683,6 +697,10 @@ export class WorkflowService {
           limits: this.deps.config.limits,
           slot: unitSlot,
           maxConcurrency: this.deps.config.maxConcurrentUnits,
+          // Isolation: meta ∩ caller, resolved by the service; the orchestrator applies it as-is.
+          ...(effectiveIsolation ? { isolation: effectiveIsolation } : {}),
+          // MCP isolation needs the process's server list; fetched only when the effective policy restricts MCP.
+          ...(effectiveIsolation?.mcp !== undefined ? { mcpServers: await this.mcpServerNames() } : {}),
           resolveWorkflow: (name) => this.resolveDurable(name),
           existingRun: true,
           ...(identity.provenance === "inline" && !this.deps.config.inlineCapabilities
@@ -720,6 +738,18 @@ export class WorkflowService {
       }
     })()
     return { runId, done }
+  }
+
+  /**
+   * Server names for `meta.isolation.mcp`, or `[]` when the host gives no list. Never throws: an unavailable host or
+   * a listing error just means "hide nothing", which is the pre-isolation behavior.
+   */
+  private async mcpServerNames(): Promise<string[]> {
+    try {
+      return (await this.deps.mcpServers?.()) ?? []
+    } catch {
+      return []
+    }
   }
 
   /** Load a saved Workflow by key (for `ctx.workflow`). */

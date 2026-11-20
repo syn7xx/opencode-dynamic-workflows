@@ -26,8 +26,8 @@ export default defineWorkflow({
   meta: { name: "edit", description: "two Units edit files in their own worktrees" },
   async run({ agent, parallel, worktrees }) {
     await parallel([
-      () => agent("Create a file named a.txt containing exactly the word alpha, using the write tool. Then reply: done", { label: "writer a", isolation: "worktree", permissions: [{ action: "edit", resource: "*", effect: "allow" }] }),
-      () => agent("Reply with exactly: nothing to change", { label: "reader", isolation: "worktree" }),
+      () => agent("Create a file named a.txt containing exactly the word alpha, using the write tool. Then reply: done", { label: "writer a", worktree: true, permissions: [{ action: "edit", resource: "*", effect: "allow" }] }),
+      () => agent("Reply with exactly: nothing to change", { label: "reader", worktree: true }),
     ])
     return worktrees()
   },

@@ -560,7 +560,7 @@ describe("audit round 4 — a hung interrupt cannot hold the Unit", () => {
 describe("worktree isolation", () => {
   test("an unchanged worktree is removed; the Unit ran there", async () => {
     const { ctx, host } = makeCtx({ worktree: { changed: false } })
-    expect(await ctx.agent("edit", { isolation: "worktree", label: "w" })).toBe("edit")
+    expect(await ctx.agent("edit", { worktree: true, label: "w" })).toBe("edit")
     expect(host.creates[0]!.location).toEqual({ directory: "/wt/wf-run-test-1" })
     expect(host.worktreeLog).toEqual(["create wf-run-test-1", "changed /wt/wf-run-test-1", "remove /wt/wf-run-test-1"])
     expect(ctx.worktrees()).toEqual([])
@@ -568,21 +568,21 @@ describe("worktree isolation", () => {
 
   test("a changed worktree is kept and listed for merging", async () => {
     const { ctx, host } = makeCtx({ worktree: { changed: true } })
-    await ctx.agent("edit", { isolation: "worktree", label: "w" })
+    await ctx.agent("edit", { worktree: true, label: "w" })
     expect(host.worktreeLog.some((line) => line.startsWith("remove"))).toBe(false)
     expect(ctx.worktrees()).toEqual([{ unit: "w", directory: "/wt/wf-run-test-1", branch: "wt-wf-run-test-1" }])
   })
 
   test("a location without the plugin fails the Unit early, legibly", async () => {
     const { ctx, host, state } = makeCtx({ worktree: { active: false } })
-    expect(await ctx.agent("edit", { isolation: "worktree" })).toBeNull()
+    expect(await ctx.agent("edit", { worktree: true })).toBeNull()
     expect(state.errors[0]?.error).toContain("the workflow plugin is not active in /wt/wf-run-test-1")
     expect(host.interrupts).toEqual(["ses_fake_1"])
   })
 
   test("a host without worktrees fails the Unit, not the Run", async () => {
     const { ctx, state } = makeCtx()
-    expect(await ctx.agent("edit", { isolation: "worktree" })).toBeNull()
+    expect(await ctx.agent("edit", { worktree: true })).toBeNull()
     expect(state.errors[0]?.error).toContain("not available on this host")
   })
 })
