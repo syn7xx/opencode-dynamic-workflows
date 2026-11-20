@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.8.0](https://github.com/syn7xx/opencode-dynamic-workflows/compare/v0.7.0...v0.8.0) (2026-11-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* **isolation:** the Unit option `restrict` is renamed to `isolation`, and `agent(prompt, { isolation: "worktree" })` becomes `agent(prompt, { worktree: true })`. Existing Workflows using either form must be updated; `meta.isolation` is new and opt-in.
+
+### Features
+
+* **isolation:** restrict a Run's Units to allowed skills, subagents and MCP servers ([9612a29](https://github.com/syn7xx/opencode-dynamic-workflows/commit/9612a29833375af53a12bd7d6bb41ecaf7671ddd))
+
 ## [0.7.0](https://github.com/syn7xx/opencode-dynamic-workflows/compare/v0.6.3...v0.7.0) (2026-11-17)
 
 
